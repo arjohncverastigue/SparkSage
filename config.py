@@ -1,0 +1,78 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Discord
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+
+# Provider selection
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
+
+# Free providers
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-r1:free")
+
+# Paid providers (optional)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+# Bot settings
+BOT_PREFIX = os.getenv("BOT_PREFIX", "!")
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "1024"))
+SYSTEM_PROMPT = os.getenv(
+    "SYSTEM_PROMPT",
+    "You are SparkSage, a helpful and friendly AI assistant in a Discord server. "
+    "Be concise, helpful, and engaging.",
+)
+
+# Provider configs — all use the OpenAI-compatible SDK
+PROVIDERS = {
+    "gemini": {
+        "name": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "api_key": GEMINI_API_KEY,
+        "model": GEMINI_MODEL,
+        "free": True,
+    },
+    "groq": {
+        "name": "Groq",
+        "base_url": "https://api.groq.com/openai/v1",
+        "api_key": GROQ_API_KEY,
+        "model": GROQ_MODEL,
+        "free": True,
+    },
+    "openrouter": {
+        "name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_key": OPENROUTER_API_KEY,
+        "model": OPENROUTER_MODEL,
+        "free": True,
+    },
+    "anthropic": {
+        "name": "Anthropic Claude",
+        "base_url": "https://api.anthropic.com/v1/",
+        "api_key": ANTHROPIC_API_KEY,
+        "model": ANTHROPIC_MODEL,
+        "free": False,
+    },
+    "openai": {
+        "name": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "api_key": OPENAI_API_KEY,
+        "model": OPENAI_MODEL,
+        "free": False,
+    },
+}
+
+# Build the free fallback chain (order matters)
+FREE_FALLBACK_CHAIN = ["gemini", "groq", "openrouter"]
