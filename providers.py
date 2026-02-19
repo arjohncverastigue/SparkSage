@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import time
 from openai import OpenAI
 import config
 
@@ -29,19 +32,58 @@ def _build_fallback_order() -> list[str]:
     return order
 
 
-# Pre-build clients for all configured providers
-_clients: dict[str, OpenAI] = {}
-for _name in set([config.AI_PROVIDER] + config.FREE_FALLBACK_CHAIN):
-    _client = _create_client(_name)
-    if _client:
-        _clients[_name] = _client
+def _build_clients() -> dict[str, OpenAI]:
+    """Build clients for all configured providers."""
+    clients = {}
+    for name in set([config.AI_PROVIDER] + config.FREE_FALLBACK_CHAIN + list(config.PROVIDERS.keys())):
+        client = _create_client(name)
+        if client:
+            clients[name] = client
+    return clients
 
+
+# Pre-build clients for all configured providers
+_clients: dict[str, OpenAI] = _build_clients()
 FALLBACK_ORDER = _build_fallback_order()
+
+
+def reload_clients():
+    """Rebuild all clients and fallback order from current config."""
+    global _clients, FALLBACK_ORDER
+    _clients = _build_clients()
+    FALLBACK_ORDER = _build_fallback_order()
 
 
 def get_available_providers() -> list[str]:
     """Return list of provider names that have valid API keys configured."""
     return [name for name in FALLBACK_ORDER if name in _clients]
+
+
+def test_provider(name: str) -> dict:
+    """Test a provider with a minimal API call. Returns {success, latency_ms, error}."""
+    provider = config.PROVIDERS.get(name)
+    if not provider:
+        return {"success": False, "latency_ms": 0, "error": f"Unknown provider: {name}"}
+
+    client = _clients.get(name)
+    if not client:
+        # Try creating a fresh client in case config was just updated
+        client = _create_client(name)
+        if not client:
+            return {"success": False, "latency_ms": 0, "error": "No API key configured"}
+
+    try:
+        start = time.time()
+        response = client.chat.completions.create(
+            model=provider["model"],
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Hi"}],
+        )
+        latency = int((time.time() - start) * 1000)
+        return {"success": True, "latency_ms": latency, "error": None}
+    except Exception as e:
+        latency = int((time.time() - start) * 1000)
+        return {"success": False, "latency_ms": latency, "error": str(e)}
 
 
 def chat(messages: list[dict], system_prompt: str) -> tuple[str, str]:

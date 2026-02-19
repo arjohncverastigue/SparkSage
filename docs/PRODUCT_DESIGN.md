@@ -2,7 +2,7 @@
 
 ## Product Vision
 
-SparkSage is an AI-powered Discord bot that brings world-class AI intelligence into any Discord server — for free. Using a multi-provider architecture with automatic fallback, it serves as an always-available, wise, and versatile assistant that enhances community engagement, streamlines support, and boosts team productivity without any API costs.
+SparkSage is an AI-powered Discord bot with a web admin dashboard that brings world-class AI intelligence into any Discord server — for free. Using a multi-provider architecture with automatic fallback, it serves as an always-available, wise, and versatile assistant that enhances community engagement, streamlines support, and boosts team productivity without any API costs.
 
 **Tagline:** *The AI spark that makes your community wiser.*
 
@@ -110,27 +110,62 @@ SparkSage is an AI-powered Discord bot that brings world-class AI intelligence i
 
 ## Architecture Overview
 
+### System Architecture
+
+SparkSage consists of three layers: a Discord bot, a FastAPI backend, and a Next.js admin dashboard.
+
+```
+┌──────────────────┐     ┌──────────────────────────────────────────────────┐
+│                   │     │              SparkSage Server                    │
+│  Discord Server   │     │                                                 │
+│  (Users)          │◄───►│  ┌─────────────┐     ┌──────────────────────┐  │
+│                   │     │  │  Discord Bot │     │   FastAPI Backend    │  │
+└──────────────────┘     │  │  (bot.py)    │     │   (localhost:8000)   │  │
+                          │  │              │     │                      │  │
+                          │  │  - Mentions  │     │  - /api/auth         │  │
+                          │  │  - /ask      │     │  - /api/config       │  │
+                          │  │  - /clear    │     │  - /api/providers    │  │
+                          │  │  - /summarize│     │  - /api/bot          │  │
+                          │  │  - /provider │     │  - /api/conversations│  │
+                          │  └──────┬───────┘     │  - /api/wizard       │  │
+                          │         │              └──────────┬───────────┘  │
+                          │         │                         │              │
+                          │         ▼                         ▼              │
+                          │  ┌─────────────────────────────────────────┐    │
+                          │  │         Shared Python Core               │    │
+                          │  │  config.py / providers.py / db.py        │    │
+                          │  │  SQLite (config, conversations, sessions)│    │
+                          │  └─────────────────────────────────────────┘    │
+                          └──────────────────────────────────────────────────┘
+                                              ▲
+                                              │ REST API
+                                              ▼
+                          ┌──────────────────────────────────────────────────┐
+                          │          Next.js Admin Dashboard                 │
+                          │          (localhost:3000)                        │
+                          │                                                 │
+                          │  ┌─────────────┐  ┌──────────────────────────┐  │
+                          │  │ Setup Wizard │  │    Dashboard Pages       │  │
+                          │  │             │  │                          │  │
+                          │  │ 1. Discord  │  │  - Overview (bot status) │  │
+                          │  │ 2. Providers│  │  - Provider management   │  │
+                          │  │ 3. Settings │  │  - Bot settings editor   │  │
+                          │  │ 4. Review   │  │  - Conversation viewer   │  │
+                          │  └─────────────┘  └──────────────────────────┘  │
+                          │                                                 │
+                          │  Auth: Discord OAuth2 + Password fallback       │
+                          └──────────────────────────────────────────────────┘
+```
+
 ### Multi-Provider Fallback System
 
 SparkSage uses a unified OpenAI-compatible SDK to connect to multiple AI providers. If the primary provider hits a rate limit or fails, it automatically falls back to the next available free provider.
 
 ```
-┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────────────┐
-│                  │     │                      │     │   FREE FALLBACK CHAIN   │
-│  Discord Server  │◄───►│  SparkSage Bot       │────►│                         │
-│  (Users)         │     │  (Python)            │     │  1. Google Gemini 2.5   │
-│                  │     │                      │     │  2. Groq (Llama 3.3)    │
-└─────────────────┘     └──────┬───────────────┘     │  3. OpenRouter (31 free)│
-                               │                      │                         │
-                        ┌──────┴───────┐              └─────────────────────────┘
-                        │              │
-                   ┌────▼────┐   ┌─────▼──────────────┐
-                   │ Config  │   │ OPTIONAL PAID       │
-                   │ (.env)  │   │                     │
-                   └─────────┘   │  - Anthropic Claude │
-                                 │  - OpenAI GPT       │
-                                 └─────────────────────┘
+Request → Primary Provider → [fail] → Gemini → [fail] → Groq → [fail] → OpenRouter
 ```
+
+Providers can be tested, switched, and monitored in real-time through the admin dashboard.
 
 ### Provider Comparison
 
@@ -153,45 +188,169 @@ SparkSage uses a unified OpenAI-compatible SDK to connect to multiple AI provide
 
 **Note on OpenAI free tier:** OpenAI offers a free tier but it is severely limited (3 RPM, 200 RPD). New accounts no longer receive free credits by default. OpenAI also released open-weight GPT-OSS models (Apache 2.0) but these require self-hosting — they are not served through the OpenAI API. GPT-OSS is available free through Groq and OpenRouter.
 
-### Tech Stack
+---
+
+## Admin Dashboard
+
+### Setup Wizard
+
+A 4-step guided setup shown on first login. Can be skipped and accessed later from the sidebar navigation.
+
+| Step | Screen | Description |
+|------|--------|-------------|
+| 1 | **Discord Token** | Bot token input with show/hide toggle, test connection button, link to Discord developer portal |
+| 2 | **AI Providers** | Free provider cards (Gemini/Groq/OpenRouter) with API key inputs and test buttons. Collapsible paid section (Anthropic/OpenAI). Primary provider selection. |
+| 3 | **Bot Settings** | Prefix, max tokens slider (128-4096), system prompt textarea. All pre-filled with defaults. |
+| 4 | **Review** | Summary of all settings with edit links per section. "Complete Setup" button saves to DB and .env. |
+
+Wizard state persists in localStorage (Zustand) and server-side (SQLite) so progress is not lost if the browser is closed.
+
+### Dashboard Pages
+
+| Page | Description |
+|------|-------------|
+| **Overview** | Bot status (online/offline, latency, guild count), active provider card, fallback chain visualization, recent activity feed |
+| **Providers** | Grid of 5 provider cards with status indicators, "Test Key" button, "Set as Primary" button, fallback chain display |
+| **Settings** | Form editor for all bot configuration (Discord, bot, API keys) with save and reset buttons. Changes apply live without restart. |
+| **Conversations** | Channel list with message counts and last activity. Click to view chat-style conversation with provider badges and timestamps. Clear history per channel. |
+
+### Authentication
+
+| Method | Use Case |
+|--------|----------|
+| **Discord OAuth2** | Primary auth — verifies Discord account and server admin role |
+| **Password** | Fallback for local/dev use — set `ADMIN_PASSWORD` in .env |
+
+Protected by next-auth middleware. Unauthenticated users redirect to login.
+
+---
+
+## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Runtime | Python 3.11+ |
-| Discord Library | discord.py 2.3+ |
-| AI SDK | openai (OpenAI-compatible — works with all providers) |
-| Config | python-dotenv |
-| Async HTTP | aiohttp |
+| **Bot Runtime** | Python 3.11+ |
+| **Discord Library** | discord.py 2.3+ |
+| **AI SDK** | openai (OpenAI-compatible — works with all providers) |
+| **Backend API** | FastAPI + Uvicorn |
+| **Database** | SQLite via aiosqlite |
+| **Auth (API)** | JWT (PyJWT) |
+| **Dashboard** | Next.js 16 (App Router) + TypeScript |
+| **UI Components** | shadcn/ui (23 components) + Tailwind CSS |
+| **Auth (Frontend)** | next-auth v5 (Discord OAuth2 + Credentials) |
+| **Forms** | React Hook Form + Zod |
+| **State** | Zustand (wizard persistence) |
+| **Icons** | Lucide React |
 
-### Project Structure
+---
+
+## Database Schema
+
+```sql
+config          — key/value store for all bot settings (synced to .env)
+conversations   — channel_id, role, content, provider, created_at
+sessions        — JWT session tracking (id, user_id, username, expires_at)
+wizard_state    — singleton: completed, current_step, data (JSON)
+```
+
+---
+
+## Project Structure
 
 ```
 sparksage/
-├── bot.py              # Main bot entry point, Discord events and commands
-├── config.py           # Environment config + provider definitions
-├── providers.py        # Multi-provider client with automatic fallback
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment template (all providers)
+├── bot.py                  # Discord bot (DB-backed conversations, bot status)
+├── config.py               # Multi-provider config with reload_from_db()
+├── providers.py            # Fallback chain, test_provider(), reload_clients()
+├── db.py                   # SQLite layer (config, conversations, sessions, wizard)
+├── run.py                  # Unified launcher (bot + FastAPI in one process)
+├── requirements.txt        # Python dependencies
+├── .env.example            # Full environment template
 ├── .gitignore
-├── cogs/               # Modular command groups (future)
-│   ├── __init__.py
-│   ├── support.py      # FAQ and support commands
-│   ├── developer.py    # Code review and dev tools
-│   ├── moderation.py   # Content moderation
-│   └── productivity.py # Writing, translation, brainstorming
-├── utils/              # Shared utilities (future)
-│   └── __init__.py
+├── CHANGELOG.md
+├── api/                    # FastAPI backend (19 endpoints)
+│   ├── main.py             # App factory with CORS
+│   ├── auth.py             # JWT + password utilities
+│   ├── deps.py             # Dependency injection
+│   └── routes/
+│       ├── auth.py         # POST /login, GET /me
+│       ├── config.py       # GET/PUT /config
+│       ├── providers.py    # GET /providers, POST /test, PUT /primary
+│       ├── bot.py          # GET /bot/status
+│       ├── conversations.py # GET/DELETE /conversations
+│       └── wizard.py       # GET /wizard/status, POST /wizard/complete
+├── dashboard/              # Next.js admin dashboard
+│   └── src/
+│       ├── app/
+│       │   ├── (auth)/login/         # Login page
+│       │   ├── wizard/               # 4-step setup wizard
+│       │   └── dashboard/            # Admin pages
+│       │       ├── page.tsx              # Overview
+│       │       ├── providers/page.tsx    # Provider management
+│       │       ├── settings/page.tsx     # Bot settings
+│       │       └── conversations/        # Conversation viewer
+│       ├── components/
+│       │   ├── ui/                   # 23 shadcn components
+│       │   ├── sidebar/              # Dashboard navigation
+│       │   ├── wizard/               # Step components
+│       │   ├── providers/            # Provider cards, fallback chain
+│       │   └── conversations/        # Message list, channel list
+│       ├── lib/                      # API client, auth config, utils
+│       ├── stores/                   # Zustand wizard store
+│       └── types/                    # TypeScript interfaces
+├── cogs/                   # Modular command groups (future)
+├── utils/                  # Shared utilities (future)
 ├── docs/
 │   └── PRODUCT_DESIGN.md
 └── tests/
-    └── __init__.py
 ```
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/auth/login` | No | Password login, returns JWT |
+| GET | `/api/auth/me` | Yes | Current user info |
+| GET | `/api/config` | Yes | All config (API keys masked) |
+| PUT | `/api/config` | Yes | Update config, reload providers live |
+| GET | `/api/providers` | Yes | Provider list with status + fallback chain |
+| POST | `/api/providers/test` | Yes | Test a provider's API key |
+| PUT | `/api/providers/primary` | Yes | Switch primary provider |
+| GET | `/api/bot/status` | Yes | Bot online status, latency, guilds |
+| GET | `/api/conversations` | Yes | Channel list with message counts |
+| GET | `/api/conversations/{id}` | Yes | Messages for a channel |
+| DELETE | `/api/conversations/{id}` | Yes | Clear channel history |
+| GET | `/api/wizard/status` | No | Wizard completion status |
+| PUT | `/api/wizard/step` | Yes | Save wizard progress |
+| POST | `/api/wizard/complete` | Yes | Finalize wizard, save all config |
+
+---
+
+## Running SparkSage
+
+```bash
+# Terminal 1 — Bot + API
+cd sparksage
+pip install -r requirements.txt
+python run.py
+# Bot connects to Discord, API starts on http://localhost:8000
+
+# Terminal 2 — Dashboard
+cd sparksage/dashboard
+npm install
+npm run dev
+# Dashboard starts on http://localhost:3000
+```
+
+First visit redirects to the setup wizard. After setup, the admin dashboard is available.
 
 ---
 
 ## Roadmap
 
-### Phase 1 — MVP (Current)
+### Phase 1 — MVP
 - [x] Bot connects to Discord and responds to mentions
 - [x] `/ask` slash command for direct questions
 - [x] `/clear` to reset conversation memory
@@ -203,24 +362,36 @@ sparksage/
 - [x] Configurable model, tokens, and system prompt
 - [x] Response footer showing which provider answered
 
-### Phase 2 — Core Features
+### Phase 2 — Admin Dashboard (Current)
+- [x] SQLite database for persistent config + conversations
+- [x] FastAPI backend with 19 REST API endpoints
+- [x] JWT authentication (password + Discord OAuth2)
+- [x] Next.js + shadcn/ui admin dashboard
+- [x] 4-step setup wizard (Discord token, providers, settings, review)
+- [x] Setup wizard accessible from sidebar nav if skipped
+- [x] Overview page (bot status, providers, activity)
+- [x] Provider management (test keys, switch primary, view fallback chain)
+- [x] Bot settings editor (live config updates, no restart needed)
+- [x] Conversation viewer (per-channel, chat-style, provider badges)
+- [x] Unified launcher (`run.py` — bot + API in one process)
+
+### Phase 3 — Core Features
 - [ ] Cog-based modular command system
 - [ ] Code review with syntax highlighting
 - [ ] FAQ auto-detection and response
 - [ ] New member onboarding flow
 - [ ] Role-based access control for commands
 
-### Phase 3 — Advanced Features
+### Phase 4 — Advanced Features
 - [ ] Daily digest scheduler
 - [ ] Content moderation pipeline
 - [ ] Multi-language translation
-- [ ] Persistent conversation storage (database)
 - [ ] Custom system prompts per channel
 - [ ] Per-channel provider override
 
-### Phase 4 — Scale & Polish
-- [ ] Dashboard for server admins
+### Phase 5 — Scale & Polish
 - [ ] Analytics and usage tracking
 - [ ] Rate limiting and quota management
 - [ ] Plugin system for community extensions
 - [ ] Provider usage analytics and cost tracking
+- [ ] Dashboard responsive design + dark mode

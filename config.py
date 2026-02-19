@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from dotenv import load_dotenv
 
@@ -35,44 +37,91 @@ SYSTEM_PROMPT = os.getenv(
     "Be concise, helpful, and engaging.",
 )
 
+# Dashboard settings
+DATABASE_PATH = os.getenv("DATABASE_PATH", "sparksage.db")
+DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "8000"))
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
+DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
+JWT_SECRET = os.getenv("JWT_SECRET", "sparksage-dev-secret-change-me")
+
+
+def _build_providers() -> dict:
+    """Build the PROVIDERS dict from current module-level variables."""
+    return {
+        "gemini": {
+            "name": "Google Gemini",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "api_key": GEMINI_API_KEY,
+            "model": GEMINI_MODEL,
+            "free": True,
+        },
+        "groq": {
+            "name": "Groq",
+            "base_url": "https://api.groq.com/openai/v1",
+            "api_key": GROQ_API_KEY,
+            "model": GROQ_MODEL,
+            "free": True,
+        },
+        "openrouter": {
+            "name": "OpenRouter",
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": OPENROUTER_API_KEY,
+            "model": OPENROUTER_MODEL,
+            "free": True,
+        },
+        "anthropic": {
+            "name": "Anthropic Claude",
+            "base_url": "https://api.anthropic.com/v1/",
+            "api_key": ANTHROPIC_API_KEY,
+            "model": ANTHROPIC_MODEL,
+            "free": False,
+        },
+        "openai": {
+            "name": "OpenAI",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": OPENAI_API_KEY,
+            "model": OPENAI_MODEL,
+            "free": False,
+        },
+    }
+
+
 # Provider configs — all use the OpenAI-compatible SDK
-PROVIDERS = {
-    "gemini": {
-        "name": "Google Gemini",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "api_key": GEMINI_API_KEY,
-        "model": GEMINI_MODEL,
-        "free": True,
-    },
-    "groq": {
-        "name": "Groq",
-        "base_url": "https://api.groq.com/openai/v1",
-        "api_key": GROQ_API_KEY,
-        "model": GROQ_MODEL,
-        "free": True,
-    },
-    "openrouter": {
-        "name": "OpenRouter",
-        "base_url": "https://openrouter.ai/api/v1",
-        "api_key": OPENROUTER_API_KEY,
-        "model": OPENROUTER_MODEL,
-        "free": True,
-    },
-    "anthropic": {
-        "name": "Anthropic Claude",
-        "base_url": "https://api.anthropic.com/v1/",
-        "api_key": ANTHROPIC_API_KEY,
-        "model": ANTHROPIC_MODEL,
-        "free": False,
-    },
-    "openai": {
-        "name": "OpenAI",
-        "base_url": "https://api.openai.com/v1",
-        "api_key": OPENAI_API_KEY,
-        "model": OPENAI_MODEL,
-        "free": False,
-    },
-}
+PROVIDERS = _build_providers()
 
 # Build the free fallback chain (order matters)
 FREE_FALLBACK_CHAIN = ["gemini", "groq", "openrouter"]
+
+
+def reload_from_db(db_config: dict[str, str]):
+    """Reload module-level config variables from DB values."""
+    import config
+
+    mapping = {
+        "DISCORD_TOKEN": str,
+        "AI_PROVIDER": lambda v: v.lower(),
+        "GEMINI_API_KEY": str,
+        "GEMINI_MODEL": str,
+        "GROQ_API_KEY": str,
+        "GROQ_MODEL": str,
+        "OPENROUTER_API_KEY": str,
+        "OPENROUTER_MODEL": str,
+        "ANTHROPIC_API_KEY": str,
+        "ANTHROPIC_MODEL": str,
+        "OPENAI_API_KEY": str,
+        "OPENAI_MODEL": str,
+        "BOT_PREFIX": str,
+        "MAX_TOKENS": int,
+        "SYSTEM_PROMPT": str,
+        "ADMIN_PASSWORD": str,
+        "DISCORD_CLIENT_ID": str,
+        "DISCORD_CLIENT_SECRET": str,
+        "JWT_SECRET": str,
+    }
+
+    for key, converter in mapping.items():
+        if key in db_config and db_config[key]:
+            setattr(config, key, converter(db_config[key]))
+
+    config.PROVIDERS = config._build_providers()

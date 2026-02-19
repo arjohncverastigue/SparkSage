@@ -1,47 +1,53 @@
+from __future__ import annotations
+
 import discord
 from discord.ext import commands
 from discord import app_commands
 import config
 import providers
-
+import db as database
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix=config.BOT_PREFIX, intents=intents)
 
-# Store conversation history per channel (in-memory, resets on restart)
-conversations: dict[int, list[dict]] = {}
 MAX_HISTORY = 20
 
 
-def get_history(channel_id: int) -> list[dict]:
-    """Get or create conversation history for a channel."""
-    if channel_id not in conversations:
-        conversations[channel_id] = []
-    return conversations[channel_id]
-
-
-def trim_history(history: list[dict]) -> list[dict]:
-    """Keep conversation history within limits."""
-    if len(history) > MAX_HISTORY:
-        return history[-MAX_HISTORY:]
-    return history
+async def get_history(channel_id: int) -> list[dict]:
+    """Get conversation history for a channel from the database."""
+    messages = await database.get_messages(str(channel_id), limit=MAX_HISTORY)
+    return [{"role": m["role"], "content": m["content"]} for m in messages]
 
 
 async def ask_ai(channel_id: int, user_name: str, message: str) -> tuple[str, str]:
     """Send a message to AI and return (response, provider_name)."""
-    history = get_history(channel_id)
-    history.append({"role": "user", "content": f"{user_name}: {message}"})
-    history = trim_history(history)
-    conversations[channel_id] = history
+    # Store user message in DB
+    await database.add_message(str(channel_id), "user", f"{user_name}: {message}")
+
+    history = await get_history(channel_id)
 
     try:
         response, provider_name = providers.chat(history, config.SYSTEM_PROMPT)
-        history.append({"role": "assistant", "content": response})
+        # Store assistant response in DB
+        await database.add_message(str(channel_id), "assistant", response, provider=provider_name)
         return response, provider_name
     except RuntimeError as e:
         return f"Sorry, all AI providers failed:\n{e}", "none"
+
+
+def get_bot_status() -> dict:
+    """Return bot status info for the dashboard API."""
+    if bot.is_ready():
+        return {
+            "online": True,
+            "username": str(bot.user),
+            "latency_ms": round(bot.latency * 1000, 1),
+            "guild_count": len(bot.guilds),
+            "guilds": [{"id": str(g.id), "name": g.name, "member_count": g.member_count} for g in bot.guilds],
+        }
+    return {"online": False, "username": None, "latency_ms": None, "guild_count": 0, "guilds": []}
 
 
 # --- Events ---
@@ -49,13 +55,17 @@ async def ask_ai(channel_id: int, user_name: str, message: str) -> tuple[str, st
 
 @bot.event
 async def on_ready():
+    # Initialize database when bot is ready
+    await database.init_db()
+    await database.sync_env_to_db()
+
     available = providers.get_available_providers()
     primary = config.AI_PROVIDER
     provider_info = config.PROVIDERS.get(primary, {})
 
     print(f"SparkSage is online as {bot.user}")
     print(f"Primary provider: {provider_info.get('name', primary)} ({provider_info.get('model', '?')})")
-    print(f"Fallback chain: {' → '.join(available)}")
+    print(f"Fallback chain: {' -> '.join(available)}")
 
     try:
         synced = await bot.tree.sync()
@@ -109,16 +119,14 @@ async def ask(interaction: discord.Interaction, question: str):
 
 @bot.tree.command(name="clear", description="Clear SparkSage's conversation memory for this channel")
 async def clear(interaction: discord.Interaction):
-    channel_id = interaction.channel_id
-    if channel_id in conversations:
-        del conversations[channel_id]
+    await database.clear_messages(str(interaction.channel_id))
     await interaction.response.send_message("Conversation history cleared!")
 
 
 @bot.tree.command(name="summarize", description="Summarize the recent conversation in this channel")
 async def summarize(interaction: discord.Interaction):
     await interaction.response.defer()
-    history = get_history(interaction.channel_id)
+    history = await get_history(interaction.channel_id)
     if not history:
         await interaction.followup.send("No conversation history to summarize.")
         return
@@ -139,7 +147,7 @@ async def provider(interaction: discord.Interaction):
     msg = f"**Current Provider:** {provider_info.get('name', primary)}\n"
     msg += f"**Model:** `{provider_info.get('model', '?')}`\n"
     msg += f"**Free:** {'Yes' if provider_info.get('free') else 'No (paid)'}\n"
-    msg += f"**Fallback Chain:** {' → '.join(available)}"
+    msg += f"**Fallback Chain:** {' -> '.join(available)}"
     await interaction.response.send_message(msg)
 
 
