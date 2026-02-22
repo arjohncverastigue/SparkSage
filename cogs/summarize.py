@@ -5,12 +5,14 @@ import discord
 import config
 import providers
 import db as database
+from utils.checks import has_permissions
 
 class Summarize(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     @app_commands.command(name="summarize", description="Summarize the recent conversation in this channel")
+    @has_permissions()
     async def summarize(self, interaction: discord.Interaction):
         await interaction.response.defer()
         history = await self.bot.get_history(interaction.channel_id)

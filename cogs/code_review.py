@@ -4,6 +4,7 @@ from discord import app_commands
 import discord
 import config
 import providers # This import is not strictly needed here as ask_ai uses providers internally, but good for clarity
+from utils.checks import has_permissions
 
 class CodeReview(commands.Cog):
     def __init__(self, bot):
@@ -14,6 +15,7 @@ class CodeReview(commands.Cog):
         code="The code snippet to review.",
         language="Optional: Programming language hint (e.g., python, javascript)."
     )
+    @has_permissions()
     async def review(self, interaction: discord.Interaction, code: str, language: str = None):
         await interaction.response.defer()
 

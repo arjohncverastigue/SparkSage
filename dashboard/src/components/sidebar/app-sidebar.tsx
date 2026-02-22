@@ -11,7 +11,8 @@ import {
   MessageSquare,
   Wand2,
   LogOut,
-  HelpCircle, // New import for FAQ icon
+  HelpCircle,
+  ShieldCheck, // New import for Permissions icon
 } from "lucide-react";
 import {
   Sidebar,
@@ -33,6 +34,7 @@ const NAV_ITEMS = [
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
   { title: "Conversations", href: "/dashboard/conversations", icon: MessageSquare },
   { title: "FAQs", href: "/dashboard/faqs", icon: HelpCircle }, // New FAQ item
+  { title: "Permissions", href: "/dashboard/permissions", icon: ShieldCheck }, // New Permissions item
 ];
 
 export function AppSidebar() {

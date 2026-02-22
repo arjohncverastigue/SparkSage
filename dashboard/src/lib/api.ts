@@ -101,6 +101,17 @@ export interface FAQResponse extends FAQBase {
   created_at: string;
 }
 
+// Command Permissions interfaces
+export interface CommandPermissionBase {
+  command_name: string;
+  guild_id: string;
+  role_id: string;
+}
+
+export interface CommandPermissionCreate extends CommandPermissionBase {}
+
+export interface CommandPermissionResponse extends CommandPermissionBase {}
+
 export const api = {
   // Auth
   login: (password: string) =>
@@ -185,6 +196,23 @@ export const api = {
 
   deleteFaq: (token: string, guildId: string, faqId: number) =>
     apiFetch<void>(`/api/faqs/${faqId}?guild_id=${guildId}`, {
+      method: "DELETE",
+      token,
+    }),
+
+  // Permissions
+  listCommandPermissions: (token: string, guildId: string) =>
+    apiFetch<CommandPermissionResponse[]>(`/api/permissions?guild_id=${guildId}`, { token }),
+
+  createCommandPermission: (token: string, permission: CommandPermissionCreate) =>
+    apiFetch<CommandPermissionResponse>("/api/permissions", {
+      method: "POST",
+      body: JSON.stringify(permission),
+      token,
+    }),
+
+  deleteCommandPermission: (token: string, commandName: string, guildId: string, roleId: string) =>
+    apiFetch<void>(`/api/permissions/${commandName}/${roleId}?guild_id=${guildId}`, {
       method: "DELETE",
       token,
     }),

@@ -70,6 +70,13 @@ async def init_db():
             created_by TEXT,
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS command_permissions (
+            command_name TEXT NOT NULL,
+            guild_id TEXT NOT NULL,
+            role_id TEXT NOT NULL,
+            PRIMARY KEY (command_name, guild_id, role_id)
+        );
         """
     )
     cursor = await db.execute("PRAGMA table_info(conversations)")
@@ -315,6 +322,48 @@ async def increment_faq_usage(faq_id: int):
     db = await get_db()
     await db.execute("UPDATE faqs SET times_used = times_used + 1 WHERE id = ?", (faq_id,))
     await db.commit()
+
+
+# --- Command Permissions helpers ---
+
+async def add_command_permission(command_name: str, guild_id: str, role_id: str):
+    db = await get_db()
+    await db.execute(
+        "INSERT OR IGNORE INTO command_permissions (command_name, guild_id, role_id) VALUES (?, ?, ?)",
+        (command_name, guild_id, role_id),
+    )
+    await db.commit()
+
+async def remove_command_permission(command_name: str, guild_id: str, role_id: str):
+    db = await get_db()
+    await db.execute(
+        "DELETE FROM command_permissions WHERE command_name = ? AND guild_id = ? AND role_id = ?",
+        (command_name, guild_id, role_id),
+    )
+    await db.commit()
+
+async def get_command_permissions(command_name: str, guild_id: str) -> list[str]:
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT role_id FROM command_permissions WHERE command_name = ? AND guild_id = ?",
+        (command_name, guild_id),
+    )
+    rows = await cursor.fetchall()
+    return [row["role_id"] for row in rows]
+
+async def get_all_command_permissions(guild_id: str | None = None) -> list[dict]:
+    db = await get_db()
+    if guild_id:
+        cursor = await db.execute(
+            "SELECT command_name, guild_id, role_id FROM command_permissions WHERE guild_id = ?",
+            (guild_id,),
+        )
+    else:
+        cursor = await db.execute(
+            "SELECT command_name, guild_id, role_id FROM command_permissions",
+        )
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
 
 async def close_db():
     """Close the database connection."""

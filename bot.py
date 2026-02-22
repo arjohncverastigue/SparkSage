@@ -9,6 +9,7 @@ import db as database
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 class SparkSageBot(commands.Bot):
     def __init__(self, command_prefix, intents):
@@ -42,6 +43,7 @@ class SparkSageBot(commands.Bot):
         await self.load_extension("cogs.code_review")
         await self.load_extension("cogs.faq")
         await self.load_extension("cogs.onboarding")
+        await self.load_extension("cogs.permissions")
 
 
 bot = SparkSageBot(command_prefix=config.BOT_PREFIX, intents=intents)

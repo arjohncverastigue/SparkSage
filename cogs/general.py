@@ -5,6 +5,7 @@ import discord
 import config
 import providers
 import db as database
+from utils.checks import has_permissions
 
 class General(commands.Cog):
     def __init__(self, bot):
@@ -12,6 +13,7 @@ class General(commands.Cog):
 
     @app_commands.command(name="ask", description="Ask SparkSage a question")
     @app_commands.describe(question="Your question for SparkSage")
+    @has_permissions()
     async def ask(self, interaction: discord.Interaction, question: str):
         await interaction.response.defer()
         response, provider_name = await self.bot.ask_ai(
@@ -27,11 +29,13 @@ class General(commands.Cog):
             await interaction.followup.send(chunk)
 
     @app_commands.command(name="clear", description="Clear SparkSage's conversation memory for this channel")
+    @has_permissions()
     async def clear(self, interaction: discord.Interaction):
         await database.clear_messages(str(interaction.channel_id))
         await interaction.response.send_message("Conversation history cleared!")
 
     @app_commands.command(name="provider", description="Show which AI provider SparkSage is currently using")
+    @has_permissions()
     async def provider(self, interaction: discord.Interaction):
         primary = config.AI_PROVIDER
         provider_info = config.PROVIDERS.get(primary, {})
