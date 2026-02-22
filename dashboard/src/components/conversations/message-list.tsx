@@ -45,6 +45,11 @@ export function MessageList({ messages }: MessageListProps) {
                     {msg.provider}
                   </Badge>
                 )}
+                {msg.type === "code_review" && (
+                  <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                    Code Review
+                  </Badge>
+                )}
               </div>
             </div>
           </div>

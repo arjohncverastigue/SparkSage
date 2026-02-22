@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Wand2,
   LogOut,
+  HelpCircle, // New import for FAQ icon
 } from "lucide-react";
 import {
   Sidebar,
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { title: "Providers", href: "/dashboard/providers", icon: Cpu },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
   { title: "Conversations", href: "/dashboard/conversations", icon: MessageSquare },
+  { title: "FAQs", href: "/dashboard/faqs", icon: HelpCircle }, // New FAQ item
 ];
 
 export function AppSidebar() {

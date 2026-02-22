@@ -36,9 +36,13 @@ async def init_db():
             role       TEXT    NOT NULL,
             content    TEXT    NOT NULL,
             provider   TEXT,
+            type       TEXT,
             created_at TEXT    NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_conv_channel ON conversations(channel_id);
+        
+        -- Add 'type' column if it doesn't exist (for existing databases)
+        PRAGMA table_info(conversations); -- Get table info to check for column existence
 
         CREATE TABLE IF NOT EXISTS sessions (
             token      TEXT PRIMARY KEY,
@@ -55,8 +59,24 @@ async def init_db():
         );
 
         INSERT OR IGNORE INTO wizard_state (id) VALUES (1);
+
+        CREATE TABLE IF NOT EXISTS faqs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id TEXT NOT NULL,
+            question TEXT NOT NULL,
+            answer TEXT NOT NULL,
+            match_keywords TEXT NOT NULL,  -- comma-separated keywords
+            times_used INTEGER DEFAULT 0,
+            created_by TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
         """
     )
+    cursor = await db.execute("PRAGMA table_info(conversations)")
+    columns = [row[1] for row in await cursor.fetchall()]
+    if "type" not in columns:
+        await db.execute("ALTER TABLE conversations ADD COLUMN type TEXT")
+
     await db.commit()
 
 
@@ -144,12 +164,12 @@ async def sync_db_to_env():
 # --- Conversation helpers ---
 
 
-async def add_message(channel_id: str, role: str, content: str, provider: str | None = None):
+async def add_message(channel_id: str, role: str, content: str, provider: str | None = None, type: str | None = None):
     """Add a message to conversation history."""
     db = await get_db()
     await db.execute(
-        "INSERT INTO conversations (channel_id, role, content, provider) VALUES (?, ?, ?, ?)",
-        (channel_id, role, content, provider),
+        "INSERT INTO conversations (channel_id, role, content, provider, type) VALUES (?, ?, ?, ?, ?)",
+        (channel_id, role, content, provider, type),
     )
     await db.commit()
 
@@ -251,6 +271,50 @@ async def delete_session(token: str):
     await db.execute("DELETE FROM sessions WHERE token = ?", (token,))
     await db.commit()
 
+
+# --- FAQ helpers ---
+
+async def add_faq(guild_id: str, question: str, answer: str, match_keywords: str, created_by: str | None = None) -> int:
+    db = await get_db()
+    cursor = await db.execute(
+        "INSERT INTO faqs (guild_id, question, answer, match_keywords, created_by) VALUES (?, ?, ?, ?, ?)",
+        (guild_id, question, answer, match_keywords, created_by),
+    )
+    await db.commit()
+    return cursor.lastrowid
+
+async def get_faqs(guild_id: str | None = None) -> list[dict]:
+    db = await get_db()
+    if guild_id:
+        cursor = await db.execute(
+            "SELECT id, guild_id, question, answer, match_keywords, times_used, created_by, created_at FROM faqs WHERE guild_id = ?",
+            (guild_id,),
+        )
+    else:
+        cursor = await db.execute(
+            "SELECT id, guild_id, question, answer, match_keywords, times_used, created_by, created_at FROM faqs",
+        )
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+async def get_faq_by_id(faq_id: int) -> dict | None:
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT id, guild_id, question, answer, match_keywords, times_used, created_by, created_at FROM faqs WHERE id = ?",
+        (faq_id,),
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+async def delete_faq(faq_id: int):
+    db = await get_db()
+    await db.execute("DELETE FROM faqs WHERE id = ?", (faq_id,))
+    await db.commit()
+
+async def increment_faq_usage(faq_id: int):
+    db = await get_db()
+    await db.execute("UPDATE faqs SET times_used = times_used + 1 WHERE id = ?", (faq_id,))
+    await db.commit()
 
 async def close_db():
     """Close the database connection."""

@@ -37,13 +37,19 @@ SYSTEM_PROMPT = os.getenv(
     "Be concise, helpful, and engaging.",
 )
 
+# Onboarding settings
+WELCOME_CHANNEL_ID = os.getenv("WELCOME_CHANNEL_ID", "")
+WELCOME_MESSAGE = os.getenv("WELCOME_MESSAGE", "Welcome to the server, {user}!")
+WELCOME_ENABLED = os.getenv("WELCOME_ENABLED", "False").lower() == "true"
+
+
 # Dashboard settings
 DATABASE_PATH = os.getenv("DATABASE_PATH", "sparksage.db")
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "8000"))
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
-JWT_SECRET = os.getenv("JWT_SECRET", "sparksage-dev-secret-change-me")
+JWT_SECRET = os.getenv("JWT_SECRET", "sparksage-dev-secret-change-me-super-secret-key")
 
 
 def _build_providers() -> dict:
@@ -114,6 +120,9 @@ def reload_from_db(db_config: dict[str, str]):
         "BOT_PREFIX": str,
         "MAX_TOKENS": int,
         "SYSTEM_PROMPT": str,
+        "WELCOME_CHANNEL_ID": str,
+        "WELCOME_MESSAGE": str,
+        "WELCOME_ENABLED": lambda v: v.lower() == "true",
         "ADMIN_PASSWORD": str,
         "DISCORD_CLIENT_ID": str,
         "DISCORD_CLIENT_SECRET": str,

@@ -26,6 +26,11 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
     throw new Error(body.detail || `API error: ${res.status}`);
   }
 
+  // Handle 204 No Content responses
+  if (res.status === 204) {
+    return null as T;
+  }
+
   return res.json();
 }
 
@@ -54,13 +59,22 @@ export interface MessageItem {
   role: string;
   content: string;
   provider: string | null;
+  type: string | null;
   created_at: string;
+}
+
+export interface GuildItem {
+  id: string;
+  name: string;
+  member_count: number;
 }
 
 export interface BotStatus {
   online: boolean;
+  username: string | null;
   latency: number | null;
-  guilds: number;
+  guild_count: number;
+  guilds: GuildItem[];
   uptime: number | null;
 }
 
@@ -68,6 +82,23 @@ export interface TestProviderResult {
   success: boolean;
   message: string;
   latency_ms?: number;
+}
+
+// FAQ interfaces
+export interface FAQBase {
+  question: string;
+  answer: string;
+  match_keywords: string;
+}
+
+export interface FAQCreate extends FAQBase {}
+
+export interface FAQResponse extends FAQBase {
+  id: number;
+  guild_id: string;
+  times_used: number;
+  created_by: string | null;
+  created_at: string;
 }
 
 export const api = {
@@ -137,7 +168,24 @@ export const api = {
   completeWizard: (token: string, data: Record<string, string>) =>
     apiFetch<{ status: string }>("/api/wizard/complete", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({ config: data }),
+      token,
+    }),
+
+  // FAQs
+  listFaqs: (token: string, guildId: string | null = null) =>
+    apiFetch<FAQResponse[]>("/api/faqs" + (guildId ? `?guild_id=${guildId}` : ""), { token }),
+
+  createFaq: (token: string, guildId: string, faq: FAQCreate) =>
+    apiFetch<FAQResponse>(`/api/faqs?guild_id=${guildId}`, {
+      method: "POST",
+      body: JSON.stringify(faq),
+      token,
+    }),
+
+  deleteFaq: (token: string, guildId: string, faqId: number) =>
+    apiFetch<void>(`/api/faqs/${faqId}?guild_id=${guildId}`, {
+      method: "DELETE",
       token,
     }),
 };

@@ -20,7 +20,10 @@ def _get_hashed_password() -> str:
     if _hashed_admin_pw is None:
         pw = os.getenv("ADMIN_PASSWORD", "")
         if pw:
-            _hashed_admin_pw = hash_password(pw)
+            if not pw.startswith("$"): # Assuming hashed passwords start with a '$'
+                _hashed_admin_pw = hash_password(pw)
+            else:
+                _hashed_admin_pw = pw
     return _hashed_admin_pw or ""
 
 
@@ -36,18 +39,28 @@ class TokenResponse(BaseModel):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest):
-    admin_pw = os.getenv("ADMIN_PASSWORD", "")
-    if not admin_pw:
-        # If no password is set, check DB for one
+    # Try to get password from environment variable first
+    admin_password_raw = os.getenv("ADMIN_PASSWORD", "")
+    hashed_admin_pw = ""
+
+    if admin_password_raw:
+        if admin_password_raw.startswith("$"):
+            hashed_admin_pw = admin_password_raw
+        else:
+            hashed_admin_pw = hash_password(admin_password_raw)
+    else:
+        # If not in env, check DB for one
         db_pw = await db.get_config("ADMIN_PASSWORD")
         if db_pw:
-            admin_pw = db_pw
+            if db_pw.startswith("$"):
+                hashed_admin_pw = db_pw
+            else:
+                hashed_admin_pw = hash_password(db_pw)
 
-    if not admin_pw:
-        raise HTTPException(status_code=400, detail="No admin password configured. Set ADMIN_PASSWORD in .env")
+    if not hashed_admin_pw:
+        raise HTTPException(status_code=400, detail="No admin password configured. Set ADMIN_PASSWORD in .env or via dashboard.")
 
-    # Simple direct comparison for the env-based password
-    if body.password != admin_pw:
+    if not verify_password(body.password, hashed_admin_pw):
         raise HTTPException(status_code=401, detail="Invalid password")
 
     token, expires_at = create_token("admin")

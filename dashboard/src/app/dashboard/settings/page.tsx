@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch"; // Import Switch
 
 const settingsSchema = z.object({
   DISCORD_TOKEN: z.string().min(1, "Discord token is required"),
@@ -26,6 +27,9 @@ const settingsSchema = z.object({
   OPENROUTER_API_KEY: z.string(),
   ANTHROPIC_API_KEY: z.string(),
   OPENAI_API_KEY: z.string(),
+  WELCOME_CHANNEL_ID: z.string().optional(),
+  WELCOME_MESSAGE: z.string().min(1, "Welcome message is required"),
+  WELCOME_ENABLED: z.boolean(),
 });
 
 type SettingsForm = z.infer<typeof settingsSchema>;
@@ -41,6 +45,10 @@ const DEFAULTS: SettingsForm = {
   OPENROUTER_API_KEY: "",
   ANTHROPIC_API_KEY: "",
   OPENAI_API_KEY: "",
+  WELCOME_CHANNEL_ID: "",
+  WELCOME_MESSAGE:
+    "Welcome to the server, {user}! Please check out {server} rules and available channels.",
+  WELCOME_ENABLED: false,
 };
 
 export default function SettingsPage() {
@@ -65,6 +73,8 @@ export default function SettingsPage() {
           if (config[key] !== undefined) {
             if (key === "MAX_TOKENS") {
               mapped[key] = Number(config[key]);
+            } else if (key === "WELCOME_ENABLED") { // Special handling for boolean
+                mapped[key] = config[key] === "True";
             } else {
               (mapped as Record<string, string>)[key] = config[key];
             }
@@ -74,7 +84,7 @@ export default function SettingsPage() {
       })
       .catch(() => toast.error("Failed to load settings"))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, form]);
 
   async function onSubmit(values: SettingsForm) {
     if (!token) return;
@@ -83,9 +93,11 @@ export default function SettingsPage() {
       // Convert to string values for the API, skip masked values (***...)
       const payload: Record<string, string> = {};
       for (const [key, val] of Object.entries(values)) {
-        const strVal = String(val);
-        if (!strVal.startsWith("***")) {
-          payload[key] = strVal;
+        // Special handling for boolean fields
+        if (key === "WELCOME_ENABLED") {
+            payload[key] = values.WELCOME_ENABLED ? "True" : "False";
+        } else if (!String(val).startsWith("***")) { // Check for masked string values
+          payload[key] = String(val);
         }
       }
       await api.updateConfig(token, payload);
@@ -196,6 +208,55 @@ export default function SettingsPage() {
                 {...form.register("SYSTEM_PROMPT")}
                 rows={4}
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Onboarding Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Onboarding</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="welcome-enabled">Enable Welcome Messages</Label>
+              <Switch
+                id="welcome-enabled"
+                checked={form.watch("WELCOME_ENABLED")}
+                onCheckedChange={(checked) => form.setValue("WELCOME_ENABLED", checked)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="welcome-channel-id">Welcome Channel ID</Label>
+              <Input
+                id="welcome-channel-id"
+                {...form.register("WELCOME_CHANNEL_ID")}
+                placeholder="e.g., 123456789012345678"
+              />
+              {form.formState.errors.WELCOME_CHANNEL_ID && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.WELCOME_CHANNEL_ID.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="welcome-message">Welcome Message Template</Label>
+              <Textarea
+                id="welcome-message"
+                {...form.register("WELCOME_MESSAGE")}
+                rows={3}
+                placeholder="Welcome, {user}! Check out {server} rules."
+              />
+              <p className="text-xs text-muted-foreground">
+                Use `{"{user}"}` for user mention and `{"{server}"}` for server name.
+              </p>
+              {form.formState.errors.WELCOME_MESSAGE && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.WELCOME_MESSAGE.message}
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>

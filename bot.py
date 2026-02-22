@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import discord
 from discord.ext import commands
-from discord import app_commands
+
 import config
 import providers
 import db as database
@@ -10,31 +10,41 @@ import db as database
 intents = discord.Intents.default()
 intents.message_content = True
 
-bot = commands.Bot(command_prefix=config.BOT_PREFIX, intents=intents)
+class SparkSageBot(commands.Bot):
+    def __init__(self, command_prefix, intents):
+        super().__init__(command_prefix=command_prefix, intents=intents)
+        self.MAX_HISTORY = 20
 
-MAX_HISTORY = 20
+    async def get_history(self, channel_id: int) -> list[dict]:
+        """Get conversation history for a channel from the database."""
+        messages = await database.get_messages(str(channel_id), limit=self.MAX_HISTORY)
+        return [{"role": m["role"], "content": m["content"]} for m in messages]
+
+    async def ask_ai(self, channel_id: int, user_name: str, message: str, system_prompt: str = None, message_type: str = None) -> tuple[str, str]:
+        """Send a message to AI and return (response, provider_name)."""
+        # Store user message in DB
+        await database.add_message(str(channel_id), "user", f"{user_name}: {message}", type=message_type)
+
+        history = await self.get_history(channel_id)
+
+        try:
+            response, provider_name = providers.chat(history, system_prompt or config.SYSTEM_PROMPT)
+            # Store assistant response in DB
+            await database.add_message(str(channel_id), "assistant", response, provider=provider_name, type=message_type)
+            return response, provider_name
+        except RuntimeError as e:
+            return f"Sorry, all AI providers failed:\n{e}", "none"
+
+    async def setup_hook(self):
+        # Load cogs here
+        await self.load_extension("cogs.general")
+        await self.load_extension("cogs.summarize")
+        await self.load_extension("cogs.code_review")
+        await self.load_extension("cogs.faq")
+        await self.load_extension("cogs.onboarding")
 
 
-async def get_history(channel_id: int) -> list[dict]:
-    """Get conversation history for a channel from the database."""
-    messages = await database.get_messages(str(channel_id), limit=MAX_HISTORY)
-    return [{"role": m["role"], "content": m["content"]} for m in messages]
-
-
-async def ask_ai(channel_id: int, user_name: str, message: str) -> tuple[str, str]:
-    """Send a message to AI and return (response, provider_name)."""
-    # Store user message in DB
-    await database.add_message(str(channel_id), "user", f"{user_name}: {message}")
-
-    history = await get_history(channel_id)
-
-    try:
-        response, provider_name = providers.chat(history, config.SYSTEM_PROMPT)
-        # Store assistant response in DB
-        await database.add_message(str(channel_id), "assistant", response, provider=provider_name)
-        return response, provider_name
-    except RuntimeError as e:
-        return f"Sorry, all AI providers failed:\n{e}", "none"
+bot = SparkSageBot(command_prefix=config.BOT_PREFIX, intents=intents)
 
 
 def get_bot_status() -> dict:
@@ -86,7 +96,7 @@ async def on_message(message: discord.Message):
             clean_content = "Hello!"
 
         async with message.channel.typing():
-            response, provider_name = await ask_ai(
+            response, provider_name = await bot.ask_ai( # Use bot.ask_ai
                 message.channel.id, message.author.display_name, clean_content
             )
 
@@ -95,60 +105,6 @@ async def on_message(message: discord.Message):
             await message.reply(response[i : i + 2000])
 
     await bot.process_commands(message)
-
-
-# --- Slash Commands ---
-
-
-@bot.tree.command(name="ask", description="Ask SparkSage a question")
-@app_commands.describe(question="Your question for SparkSage")
-async def ask(interaction: discord.Interaction, question: str):
-    await interaction.response.defer()
-    response, provider_name = await ask_ai(
-        interaction.channel_id, interaction.user.display_name, question
-    )
-    provider_label = config.PROVIDERS.get(provider_name, {}).get("name", provider_name)
-    footer = f"\n-# Powered by {provider_label}"
-
-    for i in range(0, len(response), 1900):
-        chunk = response[i : i + 1900]
-        if i + 1900 >= len(response):
-            chunk += footer
-        await interaction.followup.send(chunk)
-
-
-@bot.tree.command(name="clear", description="Clear SparkSage's conversation memory for this channel")
-async def clear(interaction: discord.Interaction):
-    await database.clear_messages(str(interaction.channel_id))
-    await interaction.response.send_message("Conversation history cleared!")
-
-
-@bot.tree.command(name="summarize", description="Summarize the recent conversation in this channel")
-async def summarize(interaction: discord.Interaction):
-    await interaction.response.defer()
-    history = await get_history(interaction.channel_id)
-    if not history:
-        await interaction.followup.send("No conversation history to summarize.")
-        return
-
-    summary_prompt = "Please summarize the key points from this conversation so far in a concise bullet-point format."
-    response, provider_name = await ask_ai(
-        interaction.channel_id, interaction.user.display_name, summary_prompt
-    )
-    await interaction.followup.send(f"**Conversation Summary:**\n{response}")
-
-
-@bot.tree.command(name="provider", description="Show which AI provider SparkSage is currently using")
-async def provider(interaction: discord.Interaction):
-    primary = config.AI_PROVIDER
-    provider_info = config.PROVIDERS.get(primary, {})
-    available = providers.get_available_providers()
-
-    msg = f"**Current Provider:** {provider_info.get('name', primary)}\n"
-    msg += f"**Model:** `{provider_info.get('model', '?')}`\n"
-    msg += f"**Free:** {'Yes' if provider_info.get('free') else 'No (paid)'}\n"
-    msg += f"**Fallback Chain:** {' -> '.join(available)}"
-    await interaction.response.send_message(msg)
 
 
 # --- Run ---

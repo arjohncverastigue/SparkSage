@@ -76,7 +76,7 @@ export default function DashboardOverview() {
             <Server className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{botStatus?.guilds ?? "--"}</p>
+            <p className="text-2xl font-bold">{botStatus?.guild_count ?? "--"}</p>
           </CardContent>
         </Card>
 
