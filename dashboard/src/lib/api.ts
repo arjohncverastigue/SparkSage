@@ -112,6 +112,17 @@ export interface CommandPermissionCreate extends CommandPermissionBase {}
 
 export interface CommandPermissionResponse extends CommandPermissionBase {}
 
+// Channel Prompt interfaces
+export interface ChannelPromptBase {
+  channel_id: string;
+  guild_id: string;
+  system_prompt: string;
+}
+
+export interface ChannelPromptCreate extends ChannelPromptBase {}
+
+export interface ChannelPromptResponse extends ChannelPromptBase {}
+
 export const api = {
   // Auth
   login: (password: string) =>
@@ -216,4 +227,51 @@ export const api = {
       method: "DELETE",
       token,
     }),
+
+  // Channel Prompts
+  listChannelPrompts: (token: string) =>
+    apiFetch<{ channel_prompts: ChannelPromptResponse[] }>("/api/config/channel_prompts", { token }),
+  
+  createChannelPrompt: (token: string, prompt: ChannelPromptCreate) =>
+    apiFetch<{ status: string }>("/api/config/channel_prompts", {
+      method: "POST",
+      body: JSON.stringify(prompt),
+      token,
+    }),
+
+  deleteChannelPrompt: (token: string, channelId: string) =>
+    apiFetch<{ status: string }>(`/api/config/channel_prompts/${channelId}`, {
+      method: "DELETE",
+      token,
+    }),
+
+  // Channel Providers
+  listChannelProviders: (token: string) =>
+    apiFetch<{ channel_providers: ChannelProviderResponse[] }>("/api/config/channel_providers", { token }),
+  
+  createChannelProvider: (token: string, provider: ChannelProviderCreate) =>
+    apiFetch<{ status: string }>("/api/config/channel_providers", {
+      method: "POST",
+      body: JSON.stringify(provider),
+      token,
+    }),
+
+  deleteChannelProvider: (token: string, channelId: string) =>
+    apiFetch<{ status: string }>(`/api/config/channel_providers/${channelId}`, {
+      method: "DELETE",
+      token,
+    }),
 };
+
+
+// Channel Provider interfaces
+export interface ChannelProviderBase {
+  channel_id: string;
+  guild_id: string;
+  provider_name: string;
+}
+
+export interface ChannelProviderCreate extends ChannelProviderBase {}
+
+export interface ChannelProviderResponse extends ChannelProviderBase {}
+

@@ -16,6 +16,13 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch"; // Import Switch
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // Import Select components
 
 const settingsSchema = z.object({
   DISCORD_TOKEN: z.string().min(1, "Discord token is required"),
@@ -30,6 +37,15 @@ const settingsSchema = z.object({
   WELCOME_CHANNEL_ID: z.string().optional(),
   WELCOME_MESSAGE: z.string().min(1, "Welcome message is required"),
   WELCOME_ENABLED: z.boolean(),
+  DIGEST_CHANNEL_ID: z.string().optional(),
+  DIGEST_TIME: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)")
+    .optional(),
+  DIGEST_ENABLED: z.boolean(),
+  MODERATION_ENABLED: z.boolean(),
+  MOD_LOG_CHANNEL_ID: z.string().optional(),
+  MODERATION_SENSITIVITY: z.enum(["low", "medium", "high"]),
 });
 
 type SettingsForm = z.infer<typeof settingsSchema>;
@@ -49,6 +65,12 @@ const DEFAULTS: SettingsForm = {
   WELCOME_MESSAGE:
     "Welcome to the server, {user}! Please check out {server} rules and available channels.",
   WELCOME_ENABLED: false,
+  DIGEST_CHANNEL_ID: "",
+  DIGEST_TIME: "09:00",
+  DIGEST_ENABLED: false,
+  MODERATION_ENABLED: false,
+  MOD_LOG_CHANNEL_ID: "",
+  MODERATION_SENSITIVITY: "medium",
 };
 
 export default function SettingsPage() {
@@ -73,7 +95,7 @@ export default function SettingsPage() {
           if (config[key] !== undefined) {
             if (key === "MAX_TOKENS") {
               mapped[key] = Number(config[key]);
-            } else if (key === "WELCOME_ENABLED") { // Special handling for boolean
+            } else if (key === "WELCOME_ENABLED" || key === "DIGEST_ENABLED" || key === "MODERATION_ENABLED") {
                 mapped[key] = config[key] === "True";
             } else {
               (mapped as Record<string, string>)[key] = config[key];
@@ -94,8 +116,8 @@ export default function SettingsPage() {
       const payload: Record<string, string> = {};
       for (const [key, val] of Object.entries(values)) {
         // Special handling for boolean fields
-        if (key === "WELCOME_ENABLED") {
-            payload[key] = values.WELCOME_ENABLED ? "True" : "False";
+        if (key === "WELCOME_ENABLED" || key === "DIGEST_ENABLED" || key === "MODERATION_ENABLED") {
+            payload[key] = (val as boolean) ? "True" : "False";
         } else if (!String(val).startsWith("***")) { // Check for masked string values
           payload[key] = String(val);
         }
@@ -255,6 +277,106 @@ export default function SettingsPage() {
               {form.formState.errors.WELCOME_MESSAGE && (
                 <p className="text-xs text-destructive">
                   {form.formState.errors.WELCOME_MESSAGE.message}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Daily Digest Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Daily Digest</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="digest-enabled">Enable Daily Digest</Label>
+              <Switch
+                id="digest-enabled"
+                checked={form.watch("DIGEST_ENABLED")}
+                onCheckedChange={(checked) => form.setValue("DIGEST_ENABLED", checked)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="digest-channel-id">Digest Channel ID</Label>
+              <Input
+                id="digest-channel-id"
+                {...form.register("DIGEST_CHANNEL_ID")}
+                placeholder="e.g., 123456789012345678"
+              />
+              {form.formState.errors.DIGEST_CHANNEL_ID && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.DIGEST_CHANNEL_ID.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="digest-time">Digest Time (HH:MM)</Label>
+              <Input
+                id="digest-time"
+                {...form.register("DIGEST_TIME")}
+                placeholder="e.g., 09:00"
+              />
+              {form.formState.errors.DIGEST_TIME && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.DIGEST_TIME.message}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Content Moderation Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Content Moderation</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="moderation-enabled">Enable Moderation</Label>
+              <Switch
+                id="moderation-enabled"
+                checked={form.watch("MODERATION_ENABLED")}
+                onCheckedChange={(checked) => form.setValue("MODERATION_ENABLED", checked)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mod-log-channel-id">Mod Log Channel ID</Label>
+              <Input
+                id="mod-log-channel-id"
+                {...form.register("MOD_LOG_CHANNEL_ID")}
+                placeholder="e.g., 123456789012345678"
+              />
+              {form.formState.errors.MOD_LOG_CHANNEL_ID && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.MOD_LOG_CHANNEL_ID.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="moderation-sensitivity">Moderation Sensitivity</Label>
+              <Select
+                value={form.watch("MODERATION_SENSITIVITY")}
+                onValueChange={(value: "low" | "medium" | "high") =>
+                  form.setValue("MODERATION_SENSITIVITY", value)
+                }
+              >
+                <SelectTrigger id="moderation-sensitivity">
+                  <SelectValue placeholder="Select sensitivity" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.MODERATION_SENSITIVITY && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.MODERATION_SENSITIVITY.message}
                 </p>
               )}
             </div>

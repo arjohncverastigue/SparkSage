@@ -42,6 +42,15 @@ WELCOME_CHANNEL_ID = os.getenv("WELCOME_CHANNEL_ID", "")
 WELCOME_MESSAGE = os.getenv("WELCOME_MESSAGE", "Welcome to the server, {user}!")
 WELCOME_ENABLED = os.getenv("WELCOME_ENABLED", "False").lower() == "true"
 
+# Digest settings
+DIGEST_CHANNEL_ID = os.getenv("DIGEST_CHANNEL_ID", "")
+DIGEST_TIME = os.getenv("DIGEST_TIME", "09:00")
+DIGEST_ENABLED = os.getenv("DIGEST_ENABLED", "False").lower() == "true"
+
+# Moderation settings
+MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "False").lower() == "true"
+MOD_LOG_CHANNEL_ID = os.getenv("MOD_LOG_CHANNEL_ID", "")
+MODERATION_SENSITIVITY = os.getenv("MODERATION_SENSITIVITY", "medium")
 
 # Dashboard settings
 DATABASE_PATH = os.getenv("DATABASE_PATH", "sparksage.db")
@@ -123,6 +132,12 @@ def reload_from_db(db_config: dict[str, str]):
         "WELCOME_CHANNEL_ID": str,
         "WELCOME_MESSAGE": str,
         "WELCOME_ENABLED": lambda v: v.lower() == "true",
+        "DIGEST_CHANNEL_ID": str,
+        "DIGEST_TIME": str,
+        "DIGEST_ENABLED": lambda v: v.lower() == "true",
+        "MODERATION_ENABLED": lambda v: v.lower() == "true",
+        "MOD_LOG_CHANNEL_ID": str,
+        "MODERATION_SENSITIVITY": str,
         "ADMIN_PASSWORD": str,
         "DISCORD_CLIENT_ID": str,
         "DISCORD_CLIENT_SECRET": str,

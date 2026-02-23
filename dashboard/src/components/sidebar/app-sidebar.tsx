@@ -13,6 +13,7 @@ import {
   LogOut,
   HelpCircle,
   ShieldCheck, // New import for Permissions icon
+  PenTool, // New import for Channel Prompts icon
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,6 +36,8 @@ const NAV_ITEMS = [
   { title: "Conversations", href: "/dashboard/conversations", icon: MessageSquare },
   { title: "FAQs", href: "/dashboard/faqs", icon: HelpCircle }, // New FAQ item
   { title: "Permissions", href: "/dashboard/permissions", icon: ShieldCheck }, // New Permissions item
+  { title: "Channel Prompts", href: "/dashboard/channel_prompts", icon: PenTool }, // New Channel Prompts item
+  { title: "Channel Providers", href: "/dashboard/channel_providers", icon: Cpu }, // New Channel Providers item
 ];
 
 export function AppSidebar() {

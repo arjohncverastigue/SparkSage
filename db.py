@@ -34,6 +34,7 @@ async def init_db():
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             channel_id TEXT    NOT NULL,
             role       TEXT    NOT NULL,
+            author_name TEXT,
             content    TEXT    NOT NULL,
             provider   TEXT,
             type       TEXT,
@@ -41,7 +42,7 @@ async def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_conv_channel ON conversations(channel_id);
         
-        -- Add 'type' column if it doesn't exist (for existing databases)
+        -- Add 'author_name' column if it doesn't exist (for existing databases)
         PRAGMA table_info(conversations); -- Get table info to check for column existence
 
         CREATE TABLE IF NOT EXISTS sessions (
@@ -77,12 +78,37 @@ async def init_db():
             role_id TEXT NOT NULL,
             PRIMARY KEY (command_name, guild_id, role_id)
         );
+
+        CREATE TABLE IF NOT EXISTS moderation_logs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id   TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            author_id  TEXT NOT NULL,
+            reason     TEXT NOT NULL,
+            severity   TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS channel_prompts (
+            channel_id TEXT PRIMARY KEY,
+            guild_id TEXT NOT NULL,
+            system_prompt TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS channel_providers (
+            channel_id TEXT PRIMARY KEY,
+            guild_id TEXT NOT NULL,
+            provider_name TEXT NOT NULL
+        );
         """
     )
     cursor = await db.execute("PRAGMA table_info(conversations)")
     columns = [row[1] for row in await cursor.fetchall()]
     if "type" not in columns:
         await db.execute("ALTER TABLE conversations ADD COLUMN type TEXT")
+    if "author_name" not in columns:
+        await db.execute("ALTER TABLE conversations ADD COLUMN author_name TEXT")
 
     await db.commit()
 
@@ -171,12 +197,12 @@ async def sync_db_to_env():
 # --- Conversation helpers ---
 
 
-async def add_message(channel_id: str, role: str, content: str, provider: str | None = None, type: str | None = None):
+async def add_message(channel_id: str, role: str, author_name: str | None, content: str, provider: str | None = None, type: str | None = None):
     """Add a message to conversation history."""
     db = await get_db()
     await db.execute(
-        "INSERT INTO conversations (channel_id, role, content, provider, type) VALUES (?, ?, ?, ?, ?)",
-        (channel_id, role, content, provider, type),
+        "INSERT INTO conversations (channel_id, role, author_name, content, provider, type) VALUES (?, ?, ?, ?, ?, ?)",
+        (channel_id, role, author_name, content, provider, type),
     )
     await db.commit()
 
@@ -190,6 +216,18 @@ async def get_messages(channel_id: str, limit: int = 20) -> list[dict]:
     )
     rows = await cursor.fetchall()
     return [dict(row) for row in reversed(rows)]
+
+
+async def get_messages_since(channel_id: str, since_datetime: datetime.datetime) -> list[dict]:
+    """Get messages for a channel since a specific datetime."""
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT role, author_name, content, provider, created_at FROM conversations WHERE channel_id = ? AND created_at >= ? ORDER BY created_at ASC",
+        (channel_id, since_datetime.isoformat()),
+    )
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
 
 
 async def clear_messages(channel_id: str):
@@ -364,6 +402,95 @@ async def get_all_command_permissions(guild_id: str | None = None) -> list[dict]
         )
     rows = await cursor.fetchall()
     return [dict(row) for row in rows]
+
+
+# --- Moderation helpers ---
+
+async def add_moderation_log(guild_id: str, channel_id: str, message_id: str, author_id: str, reason: str, severity: str):
+    """Add an entry to the moderation log."""
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO moderation_logs (guild_id, channel_id, message_id, author_id, reason, severity) VALUES (?, ?, ?, ?, ?, ?)",
+        (guild_id, channel_id, message_id, author_id, reason, severity),
+    )
+    await db.commit()
+
+
+# --- Channel Prompt helpers ---
+
+async def set_channel_prompt(channel_id: str, guild_id: str, system_prompt: str):
+    """Set a custom system prompt for a channel."""
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO channel_prompts (channel_id, guild_id, system_prompt) VALUES (?, ?, ?) ON CONFLICT(channel_id) DO UPDATE SET system_prompt = excluded.system_prompt",
+        (channel_id, guild_id, system_prompt),
+    )
+    await db.commit()
+
+async def get_channel_prompt(channel_id: str) -> str | None:
+    """Get the custom system prompt for a channel."""
+    db = await get_db()
+    cursor = await db.execute("SELECT system_prompt FROM channel_prompts WHERE channel_id = ?", (channel_id,))
+    row = await cursor.fetchone()
+    return row["system_prompt"] if row else None
+
+async def delete_channel_prompt(channel_id: str):
+    """Delete the custom system prompt for a channel."""
+    db = await get_db()
+    await db.execute("DELETE FROM channel_prompts WHERE channel_id = ?", (channel_id,))
+    await db.commit()
+
+async def get_all_channel_prompts(guild_id: str | None = None) -> list[dict]:
+    """Get all custom system prompts for a guild, or all prompts if guild_id is None."""
+    db = await get_db()
+    if guild_id:
+        cursor = await db.execute(
+            "SELECT channel_id, guild_id, system_prompt FROM channel_prompts WHERE guild_id = ?",
+            (guild_id,),
+        )
+    else:
+        cursor = await db.execute("SELECT channel_id, guild_id, system_prompt FROM channel_prompts")
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+# --- Channel Provider helpers ---
+
+async def set_channel_provider(channel_id: str, guild_id: str, provider_name: str):
+    """Set a custom AI provider for a channel."""
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO channel_providers (channel_id, guild_id, provider_name) VALUES (?, ?, ?) ON CONFLICT(channel_id) DO UPDATE SET provider_name = excluded.provider_name",
+        (channel_id, guild_id, provider_name),
+    )
+    await db.commit()
+
+async def get_channel_provider(channel_id: str) -> str | None:
+    """Get the custom AI provider for a channel."""
+    db = await get_db()
+    cursor = await db.execute("SELECT provider_name FROM channel_providers WHERE channel_id = ?", (channel_id,))
+    row = await cursor.fetchone()
+    return row["provider_name"] if row else None
+
+async def delete_channel_provider(channel_id: str):
+    """Delete the custom AI provider for a channel."""
+    db = await get_db()
+    await db.execute("DELETE FROM channel_providers WHERE channel_id = ?", (channel_id,))
+    await db.commit()
+
+async def get_all_channel_providers(guild_id: str | None = None) -> list[dict]:
+    """Get all custom AI providers for a guild, or all providers if guild_id is None."""
+    db = await get_db()
+    if guild_id:
+        cursor = await db.execute(
+            "SELECT channel_id, guild_id, provider_name FROM channel_providers WHERE guild_id = ?",
+            (guild_id,),
+        )
+    else:
+        cursor = await db.execute("SELECT channel_id, guild_id, provider_name FROM channel_providers")
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
 
 async def close_db():
     """Close the database connection."""

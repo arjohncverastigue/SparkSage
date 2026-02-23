@@ -24,14 +24,21 @@ class SparkSageBot(commands.Bot):
     async def ask_ai(self, channel_id: int, user_name: str, message: str, system_prompt: str = None, message_type: str = None) -> tuple[str, str]:
         """Send a message to AI and return (response, provider_name)."""
         # Store user message in DB
-        await database.add_message(str(channel_id), "user", f"{user_name}: {message}", type=message_type)
+        await database.add_message(str(channel_id), "user", user_name, message, type=message_type)
 
         history = await self.get_history(channel_id)
 
+        # Get channel-specific system prompt if available
+        channel_system_prompt = await database.get_channel_prompt(str(channel_id))
+        final_system_prompt = system_prompt or channel_system_prompt or config.SYSTEM_PROMPT
+
+        # Get channel-specific provider if available
+        channel_provider_override = await database.get_channel_provider(str(channel_id))
+
         try:
-            response, provider_name = providers.chat(history, system_prompt or config.SYSTEM_PROMPT)
+            response, provider_name = providers.chat(history, final_system_prompt, primary_provider=channel_provider_override)
             # Store assistant response in DB
-            await database.add_message(str(channel_id), "assistant", response, provider=provider_name, type=message_type)
+            await database.add_message(str(channel_id), "assistant", self.user.display_name, response, provider=provider_name, type=message_type)
             return response, provider_name
         except RuntimeError as e:
             return f"Sorry, all AI providers failed:\n{e}", "none"
@@ -44,6 +51,11 @@ class SparkSageBot(commands.Bot):
         await self.load_extension("cogs.faq")
         await self.load_extension("cogs.onboarding")
         await self.load_extension("cogs.permissions")
+        await self.load_extension("cogs.digest")
+        await self.load_extension("cogs.moderation")
+        await self.load_extension("cogs.translate")
+        await self.load_extension("cogs.channel_prompts")
+        await self.load_extension("cogs.channel_providers")
 
 
 bot = SparkSageBot(command_prefix=config.BOT_PREFIX, intents=intents)
@@ -91,6 +103,10 @@ async def on_message(message: discord.Message):
     if message.author == bot.user:
         return
 
+    moderation_cog = bot.get_cog("Moderation")
+    if moderation_cog:
+        await moderation_cog.check_message_for_moderation(message)
+    
     # Respond when mentioned
     if bot.user in message.mentions:
         clean_content = message.content.replace(f"<@{bot.user.id}>", "").strip()

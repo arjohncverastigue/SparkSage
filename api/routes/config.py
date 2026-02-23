@@ -56,3 +56,46 @@ async def _reload_config():
 
     import providers
     providers.reload_clients()
+
+
+class ChannelPromptRequest(BaseModel):
+    channel_id: str
+    guild_id: str
+    system_prompt: str
+
+@router.get("/channel_prompts")
+async def get_channel_prompts(user: dict = Depends(get_current_user)):
+    prompts = await db.get_all_channel_prompts()
+    return {"channel_prompts": prompts}
+
+@router.post("/channel_prompts")
+async def set_channel_prompt_api(body: ChannelPromptRequest, user: dict = Depends(get_current_user)):
+    await db.set_channel_prompt(body.channel_id, body.guild_id, body.system_prompt)
+    return {"status": "ok"}
+
+@router.delete("/channel_prompts/{channel_id}")
+async def delete_channel_prompt_api(channel_id: str, user: dict = Depends(get_current_user)):
+    await db.delete_channel_prompt(channel_id)
+    return {"status": "ok"}
+
+
+class ChannelProviderRequest(BaseModel):
+    channel_id: str
+    guild_id: str
+    provider_name: str
+
+@router.get("/channel_providers")
+async def get_channel_providers(user: dict = Depends(get_current_user)):
+    providers = await db.get_all_channel_providers()
+    return {"channel_providers": providers}
+
+@router.post("/channel_providers")
+async def set_channel_provider_api(body: ChannelProviderRequest, user: dict = Depends(get_current_user)):
+    await db.set_channel_provider(body.channel_id, body.guild_id, body.provider_name)
+    return {"status": "ok"}
+
+@router.delete("/channel_providers/{channel_id}")
+async def delete_channel_provider_api(channel_id: str, user: dict = Depends(get_current_user)):
+    await db.delete_channel_provider(channel_id)
+    return {"status": "ok"}
+
