@@ -39,10 +39,6 @@ class CodeReview(commands.Cog):
 ```{"\n" + language if language else ""}{code}
 ```"""
 
-        user_message = f"""Please review the following code snippet. The language is {language or 'auto-detected'}:
-```{"\n" + language if language else ""}{code}
-```"""
-
         try:
             print(f"DEBUG: Calling ask_ai for review command. Channel: {interaction.channel_id}, User: {interaction.user.display_name}")
             response, provider_name, tokens_used, latency_ms, input_tokens, output_tokens, estimated_cost = await self.bot.ask_ai(
@@ -72,7 +68,11 @@ class CodeReview(commands.Cog):
                     output_tokens=output_tokens,
                     estimated_cost=estimated_cost
                 )
-            await interaction.followup.send(response)
+            
+            # Split long responses (Discord 2000 char limit)
+            for i in range(0, len(response), 2000):
+                await interaction.followup.send(response[i : i + 2000])
+
         except Exception as e:
             print(f"ERROR: Exception during /review command: {e}")
             await interaction.followup.send(f"An unexpected error occurred during code review: {e}", ephemeral=True)
