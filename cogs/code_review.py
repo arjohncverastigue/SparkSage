@@ -2,6 +2,7 @@
 from discord.ext import commands
 from discord import app_commands
 import discord
+import db as database # Import database module
 import config
 import providers # This import is not strictly needed here as ask_ai uses providers internally, but good for clarity
 from utils.checks import has_permissions
@@ -38,28 +39,43 @@ class CodeReview(commands.Cog):
 ```{"\n" + language if language else ""}{code}
 ```"""
 
-        response, provider_name, tokens_used, latency_ms, input_tokens, output_tokens, estimated_cost = await self.bot.ask_ai(
-            interaction.channel_id,
-            interaction.user.display_name,
-            user_message,
-            system_prompt=system_prompt, # Pass specialized system prompt
-            message_type="code_review" # Tag this as a code review
-        )
-        # Record analytics for the 'review' command
-        if interaction.guild:
-            await database.add_analytics_event(
-                event_type="command",
-                guild_id=str(interaction.guild.id),
-                channel_id=str(interaction.channel_id),
-                user_id=str(interaction.user.id),
-                provider=provider_name,
-                tokens_used=tokens_used,
-                latency_ms=latency_ms,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                estimated_cost=estimated_cost
+        user_message = f"""Please review the following code snippet. The language is {language or 'auto-detected'}:
+```{"\n" + language if language else ""}{code}
+```"""
+
+        try:
+            print(f"DEBUG: Calling ask_ai for review command. Channel: {interaction.channel_id}, User: {interaction.user.display_name}")
+            response, provider_name, tokens_used, latency_ms, input_tokens, output_tokens, estimated_cost = await self.bot.ask_ai(
+                interaction.channel_id,
+                interaction.user.display_name,
+                user_message,
+                system_prompt=system_prompt, # Pass specialized system prompt
+                message_type="code_review" # Tag this as a code review
             )
-        await interaction.followup.send(response)
+            print(f"DEBUG: ask_ai returned. Response starts with: {response[:50]}..., Provider: {provider_name}")
+
+            if response.startswith("Sorry, all AI providers failed:"):
+                await interaction.followup.send(response, ephemeral=True)
+                return
+
+            # Record analytics for the 'review' command
+            if interaction.guild:
+                await database.add_analytics_event(
+                    event_type="command",
+                    guild_id=str(interaction.guild.id),
+                    channel_id=str(interaction.channel_id),
+                    user_id=str(interaction.user.id),
+                    provider=provider_name,
+                    tokens_used=tokens_used,
+                    latency_ms=latency_ms,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    estimated_cost=estimated_cost
+                )
+            await interaction.followup.send(response)
+        except Exception as e:
+            print(f"ERROR: Exception during /review command: {e}")
+            await interaction.followup.send(f"An unexpected error occurred during code review: {e}", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(CodeReview(bot))

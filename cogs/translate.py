@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands # Import app_commands
 import config
+import db as database # Import database module
 from utils.rate_limiter import rate_limiter # Import rate_limiter
 
 class Translate(commands.Cog):

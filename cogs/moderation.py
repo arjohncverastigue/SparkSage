@@ -27,7 +27,7 @@ class Moderation(commands.Cog):
             # Call AI for moderation review
             # We use a placeholder channel ID and bot's own name for logging purposes,
             # as this isn't directly tied to a user conversation history.
-            ai_response, _ = await self.bot.ask_ai(
+            ai_response, _, _, _, _, _, _ = await self.bot.ask_ai(
                 channel_id=0,  # A dummy channel ID for moderation logs
                 user_name="ModerationSystem",
                 message=moderation_prompt,
