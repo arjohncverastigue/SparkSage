@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import db as database
 import config
+from utils.rate_limiter import rate_limiter # Import rate_limiter
 
 class ChannelPrompts(commands.Cog):
     def __init__(self, bot):
@@ -18,6 +19,13 @@ class ChannelPrompts(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server channel.", ephemeral=True)
             return
 
+        # Rate limit check
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+        
         await interaction.response.defer(ephemeral=True)
 
         try:
@@ -26,6 +34,17 @@ class ChannelPrompts(commands.Cog):
                 guild_id=str(interaction.guild_id),
                 system_prompt=new_prompt
             )
+            # Record analytics for the 'prompt set' command
+            if interaction.guild:
+                await database.add_analytics_event(
+                    event_type="command",
+                    guild_id=str(interaction.guild.id),
+                    channel_id=str(interaction.channel_id),
+                    user_id=str(interaction.user.id),
+                    provider=None,
+                    tokens_used=None,
+                    latency_ms=None
+                )
             await interaction.followup.send(f"""Successfully set custom system prompt for this channel:
 ```
 {new_prompt}
@@ -40,10 +59,28 @@ class ChannelPrompts(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server channel.", ephemeral=True)
             return
 
+        # Rate limit check
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+        
         await interaction.response.defer(ephemeral=True)
 
         try:
             await database.delete_channel_prompt(channel_id=str(interaction.channel_id))
+            # Record analytics for the 'prompt reset' command
+            if interaction.guild:
+                await database.add_analytics_event(
+                    event_type="command",
+                    guild_id=str(interaction.guild.id),
+                    channel_id=str(interaction.channel_id),
+                    user_id=str(interaction.user.id),
+                    provider=None,
+                    tokens_used=None,
+                    latency_ms=None
+                )
             await interaction.followup.send("Successfully reset custom system prompt for this channel. It will now use the global default.")
         except Exception as e:
             await interaction.followup.send(f"Failed to reset prompt: {e}", ephemeral=True)
@@ -55,6 +92,13 @@ class ChannelPrompts(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server channel.", ephemeral=True)
             return
 
+        # Rate limit check
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+        
         await interaction.response.defer(ephemeral=True)
 
         try:
@@ -66,6 +110,18 @@ class ChannelPrompts(commands.Cog):
 ```""")
             else:
                 await interaction.followup.send("This channel does not have a custom system prompt set. It uses the global default.")
+            
+            # Record analytics for the 'prompt get' command
+            if interaction.guild:
+                await database.add_analytics_event(
+                    event_type="command",
+                    guild_id=str(interaction.guild.id),
+                    channel_id=str(interaction.channel_id),
+                    user_id=str(interaction.user.id),
+                    provider=None,
+                    tokens_used=None,
+                    latency_ms=None
+                )
         except Exception as e:
             await interaction.followup.send(f"Failed to retrieve prompt: {e}", ephemeral=True)
 

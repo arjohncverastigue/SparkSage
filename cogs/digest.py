@@ -10,9 +10,13 @@ class Digest(commands.Cog):
         self.bot = bot
         if config.DIGEST_ENABLED:
             self.daily_digest.start()
+        if config.COST_ALERT_ENABLED:
+            self.cost_alert_check.start()
 
     def cog_unload(self):
         self.daily_digest.cancel()
+        if config.COST_ALERT_ENABLED:
+            self.cost_alert_check.cancel()
 
     @tasks.loop(hours=24)
     async def daily_digest(self):
@@ -67,6 +71,48 @@ class Digest(commands.Cog):
 
         except Exception as e:
             print(f"Daily digest: Error summarizing or posting: {e}")
+
+
+    @tasks.loop(hours=12) # Check every 12 hours
+    async def cost_alert_check(self):
+        if not config.COST_ALERT_ENABLED:
+            return
+
+        print("Cost alert check task running!")
+
+        alert_channel_id = int(config.COST_ALERT_CHANNEL_ID)
+        alert_channel = self.bot.get_channel(alert_channel_id)
+        if not alert_channel:
+            print(f"Cost alert: Alert channel {config.COST_ALERT_CHANNEL_ID} not found.")
+            return
+
+        try:
+            db_connection = await database.get_db()
+            total_cost_cursor = await db_connection.execute("SELECT SUM(estimated_cost) FROM analytics WHERE estimated_cost IS NOT NULL")
+            total_cost = (await total_cost_cursor.fetchone())[0] or 0.0
+
+            if total_cost >= config.COST_ALERT_THRESHOLD:
+                await alert_channel.send(
+                    f"**Cost Alert!**\n"
+                    f"Estimated total API cost has reached `${total_cost:.2f}`, "
+                    f"exceeding the threshold of `${config.COST_ALERT_THRESHOLD:.2f}`."
+                )
+                print(f"Cost alert: Sent alert to channel {alert_channel.name}.")
+            else:
+                print(f"Cost alert: Total cost `${total_cost:.2f}` is below threshold `${config.COST_ALERT_THRESHOLD:.2f}`.")
+
+        except Exception as e:
+            print(f"Cost alert: Error checking costs: {e}")
+
+
+    @cost_alert_check.before_loop
+    async def before_cost_alert_check(self):
+        await self.bot.wait_until_ready()
+        if not config.COST_ALERT_ENABLED:
+            print("Cost alert check: Disabled in config.")
+            self.cost_alert_check.cancel()
+            return
+        print("Cost alert check task waiting for bot to be ready...")
 
 
     @daily_digest.before_loop

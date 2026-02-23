@@ -49,6 +49,7 @@ interface ChannelProviderResponse {
   channel_id: string;
   guild_id: string;
   provider_name: string;
+  channel_name?: string; // Optional: To store the resolved channel name
 }
 
 export default function ChannelProviderManagementPage() {
@@ -58,6 +59,7 @@ export default function ChannelProviderManagementPage() {
 
   const [channelProviders, setChannelProviders] = useState<ChannelProviderResponse[]>([]);
   const [allProviders, setAllProviders] = useState<ProviderItem[]>([]);
+  const [resolvedChannelNames, setResolvedChannelNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +89,15 @@ export default function ChannelProviderManagementPage() {
         // Fetch all available AI providers for the select dropdown
         const providersResponse = await api.getProviders(token);
         setAllProviders(providersResponse.providers.filter(p => p.configured)); // Only show configured providers
+
+        const uniqueChannelIds = [
+          ...new Set(channelProvidersResponse.channel_providers.map((p) => p.channel_id)),
+        ];
+        if (uniqueChannelIds.length > 0) {
+          const namesResponse = await api.resolveChannels(token, uniqueChannelIds);
+          setResolvedChannelNames(namesResponse.resolved_names);
+        }
+
       } catch (err) {
         setError("Failed to fetch data.");
         console.error("Failed to fetch data:", err);
@@ -258,8 +269,7 @@ export default function ChannelProviderManagementPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[180px]">Channel ID</TableHead>
-                <TableHead className="w-[180px]">Guild ID</TableHead>
+                <TableHead className="w-[180px]">Channel Name</TableHead>
                 <TableHead>Provider Name</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -267,8 +277,9 @@ export default function ChannelProviderManagementPage() {
             <TableBody>
               {channelProviders.map((provider) => (
                 <TableRow key={provider.channel_id}>
-                  <TableCell className="font-medium">{provider.channel_id}</TableCell>
-                  <TableCell>{provider.guild_id}</TableCell>
+                  <TableCell className="font-medium">
+                    {resolvedChannelNames[provider.channel_id] || provider.channel_id}
+                  </TableCell>
                   <TableCell>{provider.provider_name}</TableCell>
                   <TableCell className="text-right">
                     <Button

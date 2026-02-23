@@ -41,6 +41,7 @@ interface ChannelPromptResponse {
   channel_id: string;
   guild_id: string;
   system_prompt: string;
+  channel_name?: string; // Optional: To store the resolved channel name
 }
 
 export default function ChannelPromptManagementPage() {
@@ -49,6 +50,7 @@ export default function ChannelPromptManagementPage() {
   const { toast } = useToast();
 
   const [channelPrompts, setChannelPrompts] = useState<ChannelPromptResponse[]>([]);
+  const [resolvedChannelNames, setResolvedChannelNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,17 +70,25 @@ export default function ChannelPromptManagementPage() {
       return;
     }
 
-    const fetchChannelPrompts = async () => {
+    const fetchAllData = async () => {
       try {
         setLoading(true);
-        const response = await api.listChannelPrompts(token); // Assuming no guild_id filter needed for now at API level
-        setChannelPrompts(response.channel_prompts);
+        const promptsResponse = await api.listChannelPrompts(token);
+        setChannelPrompts(promptsResponse.channel_prompts);
+
+        const uniqueChannelIds = [
+          ...new Set(promptsResponse.channel_prompts.map((p) => p.channel_id)),
+        ];
+        if (uniqueChannelIds.length > 0) {
+          const namesResponse = await api.resolveChannels(token, uniqueChannelIds);
+          setResolvedChannelNames(namesResponse.resolved_names);
+        }
       } catch (err) {
-        setError("Failed to fetch channel prompts.");
-        console.error("Failed to fetch channel prompts:", err);
+        setError("Failed to fetch channel prompts or resolve channel names.");
+        console.error("Failed to fetch data:", err);
         toast({
           title: "Error",
-          description: "Failed to fetch channel prompts.",
+          description: "Failed to fetch channel prompts or resolve channel names.",
           variant: "destructive",
         });
       } finally {
@@ -86,7 +96,7 @@ export default function ChannelPromptManagementPage() {
       }
     };
 
-    fetchChannelPrompts();
+    fetchAllData();
   }, [token, toast]);
 
   const handleAddChannelPrompt = async () => {
@@ -239,8 +249,7 @@ export default function ChannelPromptManagementPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[180px]">Channel ID</TableHead>
-                <TableHead className="w-[180px]">Guild ID</TableHead>
+                <TableHead className="w-[180px]">Channel Name</TableHead>
                 <TableHead>System Prompt</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -248,8 +257,9 @@ export default function ChannelPromptManagementPage() {
             <TableBody>
               {channelPrompts.map((prompt) => (
                 <TableRow key={prompt.channel_id}>
-                  <TableCell className="font-medium">{prompt.channel_id}</TableCell>
-                  <TableCell>{prompt.guild_id}</TableCell>
+                  <TableCell className="font-medium">
+                    {resolvedChannelNames[prompt.channel_id] || prompt.channel_id}
+                  </TableCell>
                   <TableCell>{prompt.system_prompt.length > 70 ? `${prompt.system_prompt.slice(0, 70)}...` : prompt.system_prompt}</TableCell>
                   <TableCell className="text-right">
                     <Button

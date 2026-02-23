@@ -167,6 +167,79 @@ export const api = {
   getBotStatus: (token: string) =>
     apiFetch<BotStatus>("/api/bot/status", { token }),
 
+  resolveChannels: (token: string, channelIds: string[]) =>
+    apiFetch<ResolvedChannelNamesResponse>("/api/bot/resolve_channels", {
+      method: "POST",
+      body: JSON.stringify({ channel_ids: channelIds }),
+      token,
+    }),
+
+  // Analytics
+  getAnalyticsSummary: (token: string) =>
+    apiFetch<AnalyticsSummaryResponse>("/api/analytics/summary", { token }),
+
+  getAnalyticsHistory: (token: string, params?: { event_type?: string; guild_id?: string; channel_id?: string; start_date?: string; end_date?: string; limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      for (const key in params) {
+        if (params[key as keyof typeof params] !== undefined) {
+          query.append(key, String(params[key as keyof typeof params]));
+        }
+      }
+    }
+    return apiFetch<AnalyticsHistoryResponse>(`/api/analytics/history?${query.toString()}`, { token });
+  },
+
+  getRateLimits: (token: string) =>
+    apiFetch<RateLimitsResponse>("/api/analytics/rate_limits", { token }),
+
+  // Plugins
+  listPlugins: (token: string) =>
+    apiFetch<{ plugins: PluginResponse[] }>("/api/plugins", { token }),
+
+  installPlugin: (token: string, manifest: PluginManifest) =>
+    apiFetch<{ status: string; message: string }>("/api/plugins/install", {
+      method: "POST",
+      body: JSON.stringify(manifest),
+      token,
+    }),
+
+  enablePlugin: (token: string, pluginName: string) =>
+    apiFetch<{ status: string; message: string }>("/api/plugins/enable", {
+      method: "POST",
+      body: JSON.stringify({ plugin_name: pluginName }),
+      token,
+    }),
+
+  disablePlugin: (token: string, pluginName: string) =>
+    apiFetch<{ status: string; message: string }>("/api/plugins/disable", {
+      method: "POST",
+      body: JSON.stringify({ plugin_name: pluginName }),
+      token,
+    }),
+
+  deletePlugin: (token: string, pluginName: string) =>
+    apiFetch<{ status: string; message: string }>(`/api/plugins/${pluginName}`, {
+      method: "DELETE",
+      token,
+    }),
+
+  // Cost tracking
+  getCostsSummary: (token: string) =>
+    apiFetch<CostsSummaryResponse>("/api/analytics/costs/summary", { token }),
+
+  getCostsHistory: (token: string, params?: { start_date?: string; end_date?: string; limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      for (const key in params) {
+        if (params[key as keyof typeof params] !== undefined) {
+          query.append(key, String(params[key as keyof typeof params]));
+        }
+      }
+    }
+    return apiFetch<CostsHistoryResponse>(`/api/analytics/costs/history?${query.toString()}`, { token });
+  },
+
   // Conversations
   getConversations: (token: string) =>
     apiFetch<{ channels: ChannelItem[] }>("/api/conversations", { token }),
@@ -274,4 +347,64 @@ export interface ChannelProviderBase {
 export interface ChannelProviderCreate extends ChannelProviderBase {}
 
 export interface ChannelProviderResponse extends ChannelProviderBase {}
+
+// Bot interactions
+export interface ResolvedChannelNamesResponse {
+  resolved_names: Record<string, string>;
+}
+
+// Analytics interfaces
+export interface AnalyticsSummaryResponse {
+  total_events: number;
+  events_by_type: Record<string, number>;
+  provider_usage: Record<string, number>;
+  // Add more summary fields as they become available from API
+}
+
+export interface AnalyticsEvent {
+  id: number;
+  event_type: string;
+  guild_id: string | null;
+  channel_id: string | null;
+  user_id: string | null;
+  provider: string | null;
+  tokens_used: number | null;
+  latency_ms: number | null;
+  created_at: string;
+}
+
+export interface AnalyticsHistoryResponse {
+  history: AnalyticsEvent[];
+}
+
+// Rate Limiting interfaces
+export interface RateLimitsResponse {
+  rate_limit_enabled: boolean;
+  rate_limit_user: number;
+  rate_limit_guild: number;
+}
+
+// Plugin interfaces
+export interface PluginManifest {
+  name: string;
+  version: string;
+  author?: string;
+  description?: string;
+  cog: string; // The Python module path for the cog
+}
+
+export interface PluginResponse {
+  name: string;
+  version: string;
+  author: string | null;
+  description: string | null;
+  cog_path: string;
+  manifest_path: string; // Not used for display but part of the backend model
+  enabled: boolean;
+  installed_at: string;
+}
+
+export interface PluginEnableDisableRequest {
+  plugin_name: string;
+}
 

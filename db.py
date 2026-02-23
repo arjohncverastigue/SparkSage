@@ -101,6 +101,32 @@ async def init_db():
             guild_id TEXT NOT NULL,
             provider_name TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS analytics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,     -- 'command', 'mention', 'faq', 'moderation', 'translate'
+            guild_id TEXT,
+            channel_id TEXT,
+            user_id TEXT,
+            provider TEXT,
+            tokens_used INTEGER,
+            latency_ms INTEGER,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            estimated_cost REAL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS plugins (
+            name TEXT PRIMARY KEY,
+            version TEXT NOT NULL,
+            author TEXT,
+            description TEXT,
+            cog_path TEXT NOT NULL, -- Path to the cog file (e.g., "plugins.my_plugin.main")
+            manifest_path TEXT NOT NULL, -- Path to the manifest file
+            enabled BOOLEAN NOT NULL DEFAULT FALSE,
+            installed_at TEXT DEFAULT (datetime('now'))
+        );
         """
     )
     cursor = await db.execute("PRAGMA table_info(conversations)")
@@ -490,6 +516,75 @@ async def get_all_channel_providers(guild_id: str | None = None) -> list[dict]:
         cursor = await db.execute("SELECT channel_id, guild_id, provider_name FROM channel_providers")
     rows = await cursor.fetchall()
     return [dict(row) for row in rows]
+
+
+# --- Analytics helpers ---
+
+async def add_analytics_event(
+    event_type: str,
+    guild_id: str | None = None,
+    channel_id: str | None = None,
+    user_id: str | None = None,
+    provider: str | None = None,
+    tokens_used: int | None = None,
+    latency_ms: int | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    estimated_cost: float | None = None,
+):
+    """Add an analytics event to the database."""
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO analytics (event_type, guild_id, channel_id, user_id, provider, tokens_used, latency_ms, input_tokens, output_tokens, estimated_cost) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (event_type, guild_id, channel_id, user_id, provider, tokens_used, latency_ms, input_tokens, output_tokens, estimated_cost),
+    )
+    await db.commit()
+
+
+# --- Plugin helpers ---
+
+async def add_plugin(
+    name: str,
+    version: str,
+    author: str,
+    description: str,
+    cog_path: str,
+    manifest_path: str,
+):
+    """Add a new plugin to the database."""
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO plugins (name, version, author, description, cog_path, manifest_path) VALUES (?, ?, ?, ?, ?, ?)",
+        (name, version, author, description, cog_path, manifest_path),
+    )
+    await db.commit()
+
+async def get_plugin(name: str) -> dict | None:
+    """Get a plugin's information by name."""
+    db = await get_db()
+    cursor = await db.execute("SELECT * FROM plugins WHERE name = ?", (name,))
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+async def get_all_plugins() -> list[dict]:
+    """Get all registered plugins."""
+    db = await get_db()
+    cursor = await db.execute("SELECT * FROM plugins")
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+async def set_plugin_enabled(name: str, enabled: bool):
+    """Set the enabled status of a plugin."""
+    db = await get_db()
+    await db.execute("UPDATE plugins SET enabled = ? WHERE name = ?", (enabled, name))
+    await db.commit()
+
+async def delete_plugin(name: str):
+    """Delete a plugin from the database."""
+    db = await get_db()
+    await db.execute("DELETE FROM plugins WHERE name = ?", (name,))
+    await db.commit()
 
 
 async def close_db():

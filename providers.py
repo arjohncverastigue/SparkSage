@@ -96,8 +96,8 @@ def test_provider(name: str) -> dict:
         return {"success": False, "latency_ms": latency, "error": str(e)}
 
 
-def chat(messages: list[dict], system_prompt: str, primary_provider: str | None = None) -> tuple[str, str]:
-    """Send messages to AI and return (response_text, provider_name).
+def chat(messages: list[dict], system_prompt: str, primary_provider: str | None = None) -> tuple[str, str, int | None, int | None, int | None, int | None, float | None]:
+    """Send messages to AI and return (response_text, provider_name, tokens_used, latency_ms, input_tokens, output_tokens, estimated_cost).
 
     Tries the primary_provider first if specified, then falls back through configured providers.
     Raises RuntimeError if all providers fail.
@@ -120,6 +120,7 @@ def chat(messages: list[dict], system_prompt: str, primary_provider: str | None 
 
         provider = config.PROVIDERS[provider_name]
         try:
+            start_time = time.perf_counter()
             response = client.chat.completions.create(
                 model=provider["model"],
                 max_tokens=config.MAX_TOKENS,
@@ -128,8 +129,24 @@ def chat(messages: list[dict], system_prompt: str, primary_provider: str | None 
                     *messages,
                 ],
             )
+            end_time = time.perf_counter()
+            latency_ms = int((end_time - start_time) * 1000)
+            
+            input_tokens = response.usage.prompt_tokens if response.usage else None
+            output_tokens = response.usage.completion_tokens if response.usage else None
+            tokens_used = response.usage.total_tokens if response.usage else None
+
+            estimated_cost = 0.0
+            pricing = config.PROVIDER_PRICING.get(provider_name)
+            if pricing and input_tokens is not None and output_tokens is not None:
+                estimated_cost += (input_tokens / 1000) * pricing.get("input_cost_per_token", 0.0)
+                estimated_cost += (output_tokens / 1000) * pricing.get("output_cost_per_token", 0.0)
+            else:
+                estimated_cost = None # Cannot calculate if pricing or token info is missing
+
+
             text = response.choices[0].message.content
-            return text, provider_name
+            return text, provider_name, tokens_used, latency_ms, input_tokens, output_tokens, estimated_cost
 
         except Exception as e:
             errors.append(f"{provider['name']}: {e}")

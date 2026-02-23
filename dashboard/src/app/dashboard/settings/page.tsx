@@ -46,6 +46,9 @@ const settingsSchema = z.object({
   MODERATION_ENABLED: z.boolean(),
   MOD_LOG_CHANNEL_ID: z.string().optional(),
   MODERATION_SENSITIVITY: z.enum(["low", "medium", "high"]),
+  COST_ALERT_ENABLED: z.boolean(),
+  COST_ALERT_THRESHOLD: z.number().min(0),
+  COST_ALERT_CHANNEL_ID: z.string().optional(),
 });
 
 type SettingsForm = z.infer<typeof settingsSchema>;
@@ -71,6 +74,9 @@ const DEFAULTS: SettingsForm = {
   MODERATION_ENABLED: false,
   MOD_LOG_CHANNEL_ID: "",
   MODERATION_SENSITIVITY: "medium",
+  COST_ALERT_ENABLED: false,
+  COST_ALERT_THRESHOLD: 10.0,
+  COST_ALERT_CHANNEL_ID: "",
 };
 
 export default function SettingsPage() {
@@ -95,8 +101,10 @@ export default function SettingsPage() {
           if (config[key] !== undefined) {
             if (key === "MAX_TOKENS") {
               mapped[key] = Number(config[key]);
-            } else if (key === "WELCOME_ENABLED" || key === "DIGEST_ENABLED" || key === "MODERATION_ENABLED") {
+            } else if (key === "WELCOME_ENABLED" || key === "DIGEST_ENABLED" || key === "MODERATION_ENABLED" || key === "COST_ALERT_ENABLED") {
                 mapped[key] = config[key] === "True";
+            } else if (key === "COST_ALERT_THRESHOLD") {
+                mapped[key] = Number(config[key]);
             } else {
               (mapped as Record<string, string>)[key] = config[key];
             }
@@ -116,8 +124,10 @@ export default function SettingsPage() {
       const payload: Record<string, string> = {};
       for (const [key, val] of Object.entries(values)) {
         // Special handling for boolean fields
-        if (key === "WELCOME_ENABLED" || key === "DIGEST_ENABLED" || key === "MODERATION_ENABLED") {
+        if (key === "WELCOME_ENABLED" || key === "DIGEST_ENABLED" || key === "MODERATION_ENABLED" || key === "COST_ALERT_ENABLED") {
             payload[key] = (val as boolean) ? "True" : "False";
+        } else if (key === "MAX_TOKENS" || key === "COST_ALERT_THRESHOLD") {
+            payload[key] = String(val);
         } else if (!String(val).startsWith("***")) { // Check for masked string values
           payload[key] = String(val);
         }
@@ -377,6 +387,53 @@ export default function SettingsPage() {
               {form.formState.errors.MODERATION_SENSITIVITY && (
                 <p className="text-xs text-destructive">
                   {form.formState.errors.MODERATION_SENSITIVITY.message}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Cost Tracking Alerts */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Cost Tracking Alerts</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="cost-alert-enabled">Enable Cost Alerts</Label>
+              <Switch
+                id="cost-alert-enabled"
+                checked={form.watch("COST_ALERT_ENABLED")}
+                onCheckedChange={(checked) => form.setValue("COST_ALERT_ENABLED", checked)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cost-alert-threshold">Cost Alert Threshold ($)</Label>
+              <Input
+                id="cost-alert-threshold"
+                type="number"
+                step="0.01"
+                {...form.register("COST_ALERT_THRESHOLD", { valueAsNumber: true })}
+                placeholder="e.g., 10.00"
+              />
+              {form.formState.errors.COST_ALERT_THRESHOLD && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.COST_ALERT_THRESHOLD.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cost-alert-channel-id">Alert Channel ID</Label>
+              <Input
+                id="cost-alert-channel-id"
+                {...form.register("COST_ALERT_CHANNEL_ID")}
+                placeholder="e.g., 123456789012345678"
+              />
+              {form.formState.errors.COST_ALERT_CHANNEL_ID && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.COST_ALERT_CHANNEL_ID.message}
                 </p>
               )}
             </div>

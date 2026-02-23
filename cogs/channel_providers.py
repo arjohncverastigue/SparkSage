@@ -4,6 +4,7 @@ from discord import app_commands
 import db as database
 import config
 import providers
+from utils.rate_limiter import rate_limiter # Import rate_limiter
 
 class ChannelProviders(commands.Cog):
     def __init__(self, bot):
@@ -20,6 +21,13 @@ class ChannelProviders(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server channel.", ephemeral=True)
             return
 
+        # Rate limit check
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+        
         await interaction.response.defer(ephemeral=True)
 
         if provider_name not in config.PROVIDERS:
@@ -36,6 +44,17 @@ class ChannelProviders(commands.Cog):
                 guild_id=str(interaction.guild_id),
                 provider_name=provider_name
             )
+            # Record analytics for the 'channel-provider set' command
+            if interaction.guild:
+                await database.add_analytics_event(
+                    event_type="command",
+                    guild_id=str(interaction.guild.id),
+                    channel_id=str(interaction.channel_id),
+                    user_id=str(interaction.user.id),
+                    provider=None,
+                    tokens_used=None,
+                    latency_ms=None
+                )
             await interaction.followup.send(f"Successfully set custom AI provider for this channel to **{provider_name}**.")
         except Exception as e:
             await interaction.followup.send(f"Failed to set channel provider: {e}", ephemeral=True)
@@ -47,10 +66,28 @@ class ChannelProviders(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server channel.", ephemeral=True)
             return
 
+        # Rate limit check
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+        
         await interaction.response.defer(ephemeral=True)
 
         try:
             await database.delete_channel_provider(channel_id=str(interaction.channel_id))
+            # Record analytics for the 'channel-provider reset' command
+            if interaction.guild:
+                await database.add_analytics_event(
+                    event_type="command",
+                    guild_id=str(interaction.guild.id),
+                    channel_id=str(interaction.channel_id),
+                    user_id=str(interaction.user.id),
+                    provider=None,
+                    tokens_used=None,
+                    latency_ms=None
+                )
             await interaction.followup.send("Successfully reset custom AI provider for this channel. It will now use the global primary provider.")
         except Exception as e:
             await interaction.followup.send(f"Failed to reset channel provider: {e}", ephemeral=True)
@@ -62,6 +99,13 @@ class ChannelProviders(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server channel.", ephemeral=True)
             return
 
+        # Rate limit check
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+        
         await interaction.response.defer(ephemeral=True)
 
         try:
@@ -70,6 +114,18 @@ class ChannelProviders(commands.Cog):
                 await interaction.followup.send(f"Current custom AI provider for this channel: **{current_provider}**.")
             else:
                 await interaction.followup.send("This channel does not have a custom AI provider set. It uses the global primary provider.")
+            
+            # Record analytics for the 'channel-provider get' command
+            if interaction.guild:
+                await database.add_analytics_event(
+                    event_type="command",
+                    guild_id=str(interaction.guild.id),
+                    channel_id=str(interaction.channel_id),
+                    user_id=str(interaction.user.id),
+                    provider=None,
+                    tokens_used=None,
+                    latency_ms=None
+                )
         except Exception as e:
             await interaction.followup.send(f"Failed to retrieve channel provider: {e}", ephemeral=True)
 

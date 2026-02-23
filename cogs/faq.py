@@ -3,6 +3,7 @@ from discord import app_commands
 import discord
 import db
 import time # For cooldown
+from utils.rate_limiter import rate_limiter # Import rate_limiter
 
 # Cooldown for FAQ auto-responses per channel
 FAQ_COOLDOWN = commands.CooldownMapping.from_cooldown(
@@ -22,6 +23,15 @@ class FAQ(commands.Cog):
 
         if message.guild is None: # Only process guild messages for FAQs
             return
+
+        # Rate limit check for FAQ auto-responses
+        if message.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(message.author.id), str(message.guild.id))
+            if not allowed:
+                # Optionally send an ephemeral message here, but for auto-response it might be too spammy.
+                # For now, just silently ignore.
+                return
+
 
         bucket = FAQ_COOLDOWN.get_bucket(message)
         if bucket.update_rate_limit(): # Returns non-None if rate limited
@@ -52,6 +62,17 @@ class FAQ(commands.Cog):
         if best_match_faq and highest_confidence > 0:
             await message.channel.send(best_match_faq["answer"])
             await db.increment_faq_usage(best_match_faq["id"])
+            # Record analytics for FAQ auto-response
+            if message.guild:
+                await db.add_analytics_event(
+                    event_type="faq",
+                    guild_id=str(message.guild.id),
+                    channel_id=str(message.channel.id),
+                    user_id=str(message.author.id),
+                    provider=None, # No AI provider directly
+                    tokens_used=None,
+                    latency_ms=None
+                )
 
         await self.bot.process_commands(message) # Important to process other commands too
 
@@ -70,6 +91,13 @@ class FAQ(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
             return
 
+        # Rate limit check
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+
         await db.add_faq(
             str(interaction.guild.id),
             question,
@@ -77,6 +105,17 @@ class FAQ(commands.Cog):
             keywords,
             interaction.user.name # created_by
         )
+        # Record analytics for the 'faq add' command
+        if interaction.guild:
+            await db.add_analytics_event(
+                event_type="command",
+                guild_id=str(interaction.guild.id),
+                channel_id=str(interaction.channel_id),
+                user_id=str(interaction.user.id),
+                provider=None,
+                tokens_used=None,
+                latency_ms=None
+            )
         await interaction.response.send_message("FAQ added successfully!", ephemeral=True)
 
     @faq_group.command(name="list", description="List all FAQs for this server")
@@ -85,8 +124,26 @@ class FAQ(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
             return
 
+        # Rate limit check
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+
         faqs = await db.get_faqs(str(interaction.guild.id))
         if not faqs:
+            # Record analytics for the 'faq list' command even if no FAQs are found
+            if interaction.guild:
+                await db.add_analytics_event(
+                    event_type="command",
+                    guild_id=str(interaction.guild.id),
+                    channel_id=str(interaction.channel_id),
+                    user_id=str(interaction.user.id),
+                    provider=None,
+                    tokens_used=None,
+                    latency_ms=None
+                )
             await interaction.response.send_message("No FAQs configured for this server.", ephemeral=True)
             return
 
@@ -101,6 +158,17 @@ class FAQ(commands.Cog):
                 inline=False
             )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+        # Record analytics for the 'faq list' command
+        if interaction.guild:
+            await db.add_analytics_event(
+                event_type="command",
+                guild_id=str(interaction.guild.id),
+                channel_id=str(interaction.channel_id),
+                user_id=str(interaction.user.id),
+                provider=None,
+                tokens_used=None,
+                latency_ms=None
+            )
 
     @faq_group.command(name="remove", description="Remove a FAQ entry by its ID")
     @app_commands.describe(
@@ -112,12 +180,30 @@ class FAQ(commands.Cog):
             await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
             return
 
+        # Rate limit check
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+
         faq = await db.get_faq_by_id(faq_id)
         if not faq or str(faq["guild_id"]) != str(interaction.guild.id):
             await interaction.response.send_message("FAQ not found or does not belong to this server.", ephemeral=True)
             return
 
         await db.delete_faq(faq_id)
+        # Record analytics for the 'faq remove' command
+        if interaction.guild:
+            await db.add_analytics_event(
+                event_type="command",
+                guild_id=str(interaction.guild.id),
+                channel_id=str(interaction.channel_id),
+                user_id=str(interaction.user.id),
+                provider=None,
+                tokens_used=None,
+                latency_ms=None
+            )
         await interaction.response.send_message(f"FAQ with ID `{faq_id}` removed successfully!", ephemeral=True)
 
 

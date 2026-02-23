@@ -52,6 +52,16 @@ MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "False").lower() == "true"
 MOD_LOG_CHANNEL_ID = os.getenv("MOD_LOG_CHANNEL_ID", "")
 MODERATION_SENSITIVITY = os.getenv("MODERATION_SENSITIVITY", "medium")
 
+# Rate Limiting settings
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "False").lower() == "true"
+RATE_LIMIT_USER = int(os.getenv("RATE_LIMIT_USER", "10")) # requests per minute
+RATE_LIMIT_GUILD = int(os.getenv("RATE_LIMIT_GUILD", "30")) # requests per minute
+
+# Cost Tracking settings
+COST_ALERT_ENABLED = os.getenv("COST_ALERT_ENABLED", "False").lower() == "true"
+COST_ALERT_THRESHOLD = float(os.getenv("COST_ALERT_THRESHOLD", "10.0")) # USD
+COST_ALERT_CHANNEL_ID = os.getenv("COST_ALERT_CHANNEL_ID", "")
+
 # Dashboard settings
 DATABASE_PATH = os.getenv("DATABASE_PATH", "sparksage.db")
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "8000"))
@@ -105,6 +115,31 @@ def _build_providers() -> dict:
 # Provider configs — all use the OpenAI-compatible SDK
 PROVIDERS = _build_providers()
 
+# Define token pricing (cost per token) for different providers and models
+# These are example values and should be updated based on actual provider pricing.
+PROVIDER_PRICING = {
+    "gemini": {
+        "input_cost_per_token": 0.0000001, # Example: $0.0000001 per token (very low)
+        "output_cost_per_token": 0.0000002,
+    },
+    "groq": {
+        "input_cost_per_token": 0.0000001,
+        "output_cost_per_token": 0.0000002,
+    },
+    "openrouter": { # OpenRouter's pricing varies by model, so this is a simplification
+        "input_cost_per_token": 0.0000005,
+        "output_cost_per_token": 0.0000015,
+    },
+    "anthropic": {
+        "input_cost_per_token": 0.000003, # Example: Claude Sonnet 3.5
+        "output_cost_per_token": 0.000015,
+    },
+    "openai": {
+        "input_cost_per_token": 0.0000005, # Example: GPT-4o-mini
+        "output_cost_per_token": 0.0000015,
+    },
+}
+
 # Build the free fallback chain (order matters)
 FREE_FALLBACK_CHAIN = ["gemini", "groq", "openrouter"]
 
@@ -138,6 +173,12 @@ def reload_from_db(db_config: dict[str, str]):
         "MODERATION_ENABLED": lambda v: v.lower() == "true",
         "MOD_LOG_CHANNEL_ID": str,
         "MODERATION_SENSITIVITY": str,
+        "RATE_LIMIT_ENABLED": lambda v: v.lower() == "true",
+        "RATE_LIMIT_USER": int,
+        "RATE_LIMIT_GUILD": int,
+        "COST_ALERT_ENABLED": lambda v: v.lower() == "true",
+        "COST_ALERT_THRESHOLD": float,
+        "COST_ALERT_CHANNEL_ID": str,
         "ADMIN_PASSWORD": str,
         "DISCORD_CLIENT_ID": str,
         "DISCORD_CLIENT_SECRET": str,

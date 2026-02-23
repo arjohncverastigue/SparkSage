@@ -5,6 +5,7 @@ import discord
 import config
 import providers # This import is not strictly needed here as ask_ai uses providers internally, but good for clarity
 from utils.checks import has_permissions
+from utils.rate_limiter import rate_limiter # Import rate_limiter
 
 class CodeReview(commands.Cog):
     def __init__(self, bot):
@@ -17,6 +18,12 @@ class CodeReview(commands.Cog):
     )
     @has_permissions()
     async def review(self, interaction: discord.Interaction, code: str, language: str = None):
+        if interaction.guild:
+            allowed, reason = rate_limiter.check_and_consume(str(interaction.user.id), str(interaction.guild.id))
+            if not allowed:
+                await interaction.response.send_message(reason, ephemeral=True)
+                return
+        
         await interaction.response.defer()
 
         # Specialized system prompt for code review
@@ -31,13 +38,27 @@ class CodeReview(commands.Cog):
 ```{"\n" + language if language else ""}{code}
 ```"""
 
-        response, provider_name = await self.bot.ask_ai(
+        response, provider_name, tokens_used, latency_ms, input_tokens, output_tokens, estimated_cost = await self.bot.ask_ai(
             interaction.channel_id,
             interaction.user.display_name,
             user_message,
             system_prompt=system_prompt, # Pass specialized system prompt
             message_type="code_review" # Tag this as a code review
         )
+        # Record analytics for the 'review' command
+        if interaction.guild:
+            await database.add_analytics_event(
+                event_type="command",
+                guild_id=str(interaction.guild.id),
+                channel_id=str(interaction.channel_id),
+                user_id=str(interaction.user.id),
+                provider=provider_name,
+                tokens_used=tokens_used,
+                latency_ms=latency_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                estimated_cost=estimated_cost
+            )
         await interaction.followup.send(response)
 
 async def setup(bot):
