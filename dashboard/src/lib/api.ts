@@ -377,6 +377,25 @@ export interface AnalyticsHistoryResponse {
   history: AnalyticsEvent[];
 }
 
+// Cost Tracking interfaces
+export interface CostsSummaryResponse {
+  total_cost: number;
+  cost_by_provider: Record<string, number>;
+  // Add more summary fields as they become available from API
+}
+
+export interface CostsHistoryResponse {
+  history: CostEvent[];
+}
+
+export interface CostEvent {
+  id: number;
+  event_type: string;
+  provider: string;
+  cost: number;
+  created_at: string;
+}
+
 // Rate Limiting interfaces
 export interface RateLimitsResponse {
   rate_limit_enabled: boolean;
