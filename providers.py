@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import time
+from openai import OpenAI
+import config
+import discord
+from discord import app_commands
+
+
+def _create_client(provider_name: str) -> OpenAI | None:
+    """Create an OpenAI-compatible client for the given provider."""
+    provider = config.PROVIDERS.get(provider_name)
+    if not provider or not provider["api_key"]:
+        return None
+
+    extra_headers = {}
+    if provider_name == "anthropic":
+        extra_headers["anthropic-version"] = "2023-06-01"
+
+    return OpenAI(
+        base_url=provider["base_url"],
+        api_key=provider["api_key"],
+        default_headers=extra_headers or None,
+    )
+
+
+def _build_fallback_order() -> list[str]:
+    """Build the provider fallback order: primary first, then free providers."""
+    primary = config.AI_PROVIDER
+    order = [primary]
+    for name in config.FREE_FALLBACK_CHAIN:
+        if name not in order:
+            order.append(name)
+    return order
+
+
+def _build_clients() -> dict[str, OpenAI]:
+    """Build clients for all configured providers."""
+    clients = {}
+    for name in set([config.AI_PROVIDER] + config.FREE_FALLBACK_CHAIN + list(config.PROVIDERS.keys())):
+        client = _create_client(name)
+        if client:
+            clients[name] = client
+    return clients
+
+
+# Pre-build clients for all configured providers
+_clients: dict[str, OpenAI] = _build_clients()
+FALLBACK_ORDER = _build_fallback_order()
+
+
+def reload_clients():
+    """Rebuild all clients and fallback order from current config."""
+    global _clients, FALLBACK_ORDER
+    _clients = _build_clients()
+    FALLBACK_ORDER = _build_fallback_order()
+
+
+def get_available_providers() -> list[str]:
+    """Return list of provider names that have valid API keys configured."""
+    return [name for name in FALLBACK_ORDER if name in _clients]
+
+async def provider_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    """Autocomplete for provider names."""
+    choices = []
+    for provider_name, provider_data in config.PROVIDERS.items():
+        if current.lower() in provider_name.lower() and provider_data["api_key"]:
+            choices.append(app_commands.Choice(name=f"{provider_data['name']} ({provider_name})", value=provider_name))
+    return choices
+
+
+def test_provider(name: str) -> dict:
+    """Test a provider with a minimal API call. Returns {success, latency_ms, error}."""
+    provider = config.PROVIDERS.get(name)
+    if not provider:
+        return {"success": False, "latency_ms": 0, "error": f"Unknown provider: {name}"}
+
+    client = _clients.get(name)
+    if not client:
+        # Try creating a fresh client in case config was just updated
+        client = _create_client(name)
+        if not client:
+            return {"success": False, "latency_ms": 0, "error": "No API key configured"}
+
+    try:
+        start = time.time()
+        response = client.chat.completions.create(
+            model=provider["model"],
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Hi"}],
+        )
+        latency = int((time.time() - start) * 1000)
+        return {"success": True, "latency_ms": latency, "error": None}
+    except Exception as e:
+        latency = int((time.time() - start) * 1000)
+        return {"success": False, "latency_ms": latency, "error": str(e)}
+
+
+def chat(messages: list[dict], system_prompt: str, primary_provider: str | None = None) -> tuple[str, str]:
+    """Send messages to AI and return (response_text, provider_name).
+
+    Tries the primary_provider first if specified, then falls back through configured providers.
+    Raises RuntimeError if all providers fail.
+    """
+    errors = []
+    
+    # Determine the order of providers to try
+    providers_to_try = []
+    if primary_provider and primary_provider in _clients:
+        providers_to_try.append(primary_provider)
+    
+    for p_name in FALLBACK_ORDER:
+        if p_name not in providers_to_try:
+            providers_to_try.append(p_name)
+
+    for provider_name in providers_to_try:
+        client = _clients.get(provider_name)
+        if not client:
+            continue
+
+        provider = config.PROVIDERS[provider_name]
+        try:
+            response = client.chat.completions.create(
+                model=provider["model"],
+                max_tokens=config.MAX_TOKENS,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    *messages,
+                ],
+            )
+            text = response.choices[0].message.content
+            return text, provider_name
+
+        except Exception as e:
+            errors.append(f"{provider['name']}: {e}")
+            continue
+
+    error_details = "\n".join(errors)
+    raise RuntimeError(f"All providers failed:\n{error_details}")
